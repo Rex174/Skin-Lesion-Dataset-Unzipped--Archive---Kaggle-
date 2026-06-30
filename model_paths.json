@@ -1,0 +1,5 @@
+{
+  "baseline": "phase1_outputs\\models\\Model_A_Baseline_final.h5",
+  "enhanced_v1": "phase1_outputs\\models\\Model_B_Enhanced_v1_final.h5",
+  "enhanced_v2": "phase1_outputs\\models\\Model_C_Enhanced_v2_final.h5"
+}
