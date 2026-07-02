@@ -281,6 +281,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
         const errJson = await resp.json().catch(() => ({}));
         throw new Error(errJson.error || `Server error ${resp.status}`);
       }
+      
       const json = await resp.json();
       if (!json.ok) throw new Error(json.error || 'Unknown error');
       const data = json.data;
