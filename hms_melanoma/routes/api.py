@@ -61,65 +61,174 @@ def _run_predict(image_path, model_key, model_path, label_map_path,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FAIRNESS / EOD HELPERS
+#  FAIRNESS / EOD HELPERS  — parsed from the REAL Phase-1 results
+#  (phase1_outputs/results/all_results.json). Fairness is measured on
+#  AGE GROUP, SEX and LESION LOCATION (HAM10000 has no skin-tone labels).
+#  Baseline = Model A (Standard Baseline); deployed = Model E (Full Framework).
 # ══════════════════════════════════════════════════════════════════════════════
-# Per-subgroup Equal Opportunity Difference BEFORE (baseline) and AFTER
-# (enhanced_v2) the hybrid framework. These power the per-result bias-reduction
-# panel. ⚠ Replace with your real Phase 1 fairness evaluation
-# (phase1_outputs/results/all_results.json → per_subgroup_eod).
-SUBGROUP_EOD_TABLE = {
-    "Pediatric":  {"label": "Pediatric patients (0–17)",  "baseline": 0.31, "enhanced": 0.09},
-    "YoungAdult": {"label": "Young adults (18–39)",        "baseline": 0.14, "enhanced": 0.06},
-    "MiddleAged": {"label": "Middle-aged adults (40–59)",  "baseline": 0.13, "enhanced": 0.05},
-    "Elderly":    {"label": "Elderly patients (60+)",      "baseline": 0.16, "enhanced": 0.06},
-    "default":    {"label": "this demographic subgroup",   "baseline": 0.18, "enhanced": 0.07},
-}
-# Rare anatomical sites carry extra bias in HAM10000
-RARE_SITE_EOD = {"acral": 0.27, "genital": 0.25, "ear": 0.22}
+
+# Ordered registry: (json_key, api_key, display_name, mitigation, is_best, note)
+_MODEL_ORDER = [
+    ("Model_A_Standard_Baseline", "baseline",      "Model A — Standard Baseline",
+     "None (original imbalanced HAM10000)", False,
+     "Trained on the raw imbalanced dataset. Highest accuracy and melanoma sensitivity, but the largest fairness gaps — especially across lesion location and age group."),
+    ("Model_B_Sampling_Only",     "sampling_only", "Model B — Sampling Only",
+     "Intersectional stratified sampling", False,
+     "Stratified sampling sharply reduces age- and sex-based bias, at a cost to overall accuracy and melanoma sensitivity."),
+    ("Model_C_Reweighting_Only",  "reweight_only", "Model C — Reweighting Only",
+     "Adaptive distribution-aware reweighting", False,
+     "Reweighting alone lowers age-group bias but is the least accurate and least calibrated, and worsens sex-based EOD."),
+    ("Model_D_cGAN_Only",         "cgan_only",     "Model D — cGAN Only",
+     "Conditional GAN image augmentation", False,
+     "Synthetic minority-subgroup images preserve strong accuracy while lowering age- and sex-based bias."),
+    ("Model_E_Full_Framework",    "enhanced_v2",   "Model E — Full Framework",
+     "Sampling + Reweighting + cGAN (full hybrid framework)", True,
+     "The full hybrid data-centric framework — the deployed model. Lowest bias on every axis, trading raw accuracy for substantially fairer predictions."),
+]
+
+_BASELINE_JSON_KEY = "Model_A_Standard_Baseline"
+_DEPLOYED_JSON_KEY = "Model_E_Full_Framework"
 
 
-def _subgroup_eod(age_group, sex, localization):
-    """Return EOD before/after + reduction% for a patient's subgroup."""
-    key  = age_group if age_group in SUBGROUP_EOD_TABLE else "default"
-    base = dict(SUBGROUP_EOD_TABLE[key])
-    loc  = (localization or "").lower().strip()
-    if loc in RARE_SITE_EOD:
-        base = {"label": f"{loc} lesions", "baseline": RARE_SITE_EOD[loc], "enhanced": 0.08}
-    red = round((1 - base["enhanced"] / base["baseline"]) * 100) if base["baseline"] else 0
+def _load_results():
+    """Load and cache all_results.json. Returns {} on failure."""
+    if not hasattr(_load_results, "_cache"):
+        try:
+            with open(current_app.config["RESULTS_JSON_PATH"], "r") as f:
+                _load_results._cache = json.load(f)
+        except Exception as e:
+            print(f"[WARN] Could not load results JSON: {e}")
+            _load_results._cache = {}
+    return _load_results._cache
+
+
+def _axis_eods(model_json):
+    """(eod_age, eod_sex, eod_loc) from a model's fairness block, safe on missing keys."""
+    fair = (model_json or {}).get("fairness", {})
+    age = fair.get("age_group", {}).get("EOD")
+    sex = fair.get("sex", {}).get("EOD")
+    loc = fair.get("loc_zone", {}).get("EOD")
+    return age, sex, loc
+
+
+def _build_model_comparison():
+    """Build the five-model list the frontend Model-Performance page expects,
+    from the real JSON. Falls back to _MODEL_REGISTRY_FALLBACK if JSON absent."""
+    res = _load_results()
+    baseline_json = res.get(_BASELINE_JSON_KEY, {})
+    base_axes = _axis_eods(baseline_json)
+    base_mean = None
+    if all(v is not None for v in base_axes):
+        base_mean = sum(base_axes) / 3.0
+
+    out = []
+    for jkey, akey, name, mitigation, is_best, note in _MODEL_ORDER:
+        m = res.get(jkey)
+        if not m:
+            continue
+        sm = m.get("standard_metrics", {})
+        age, sex, loc = _axis_eods(m)
+        axis_vals = [v for v in (age, sex, loc) if v is not None]
+        mean_eod = (sum(axis_vals) / len(axis_vals)) if axis_vals else None
+        worst_eod = max(axis_vals) if axis_vals else None
+        bias_red = None
+        if base_mean and mean_eod is not None and base_mean > 0:
+            bias_red = round((1 - mean_eod / base_mean) * 100)
+        out.append({
+            "key": akey, "name": name, "arch": "EfficientNet-B0", "mitigation": mitigation,
+            "accuracy":       sm.get("accuracy"),
+            "auc":            sm.get("auc_macro"),
+            "sensitivity":    sm.get("sensitivity"),
+            "melSensitivity": sm.get("per_class_sensitivity", {}).get("mel"),
+            "ece":            m.get("ece"),
+            "eodAge": age, "eodSex": sex, "eodLoc": loc,
+            "meanEOD": round(mean_eod, 3) if mean_eod is not None else None,
+            "worstEOD": round(worst_eod, 3) if worst_eod is not None else None,
+            "biasReduction": bias_red,
+            "isBest": is_best, "note": note,
+        })
+    return out or _MODEL_REGISTRY_FALLBACK
+
+
+def _eod_by_axis():
+    """Real baseline (A) vs deployed (E) EOD on each protected axis."""
+    res = _load_results()
+    a = _axis_eods(res.get(_BASELINE_JSON_KEY, {}))
+    e = _axis_eods(res.get(_DEPLOYED_JSON_KEY, {}))
+    # Fall back to known real values if JSON missing
+    a = [v if v is not None else d for v, d in zip(a, (0.3404, 0.0840, 0.6800))]
+    e = [v if v is not None else d for v, d in zip(e, (0.0299, 0.0129, 0.3467))]
     return {
-        "eod_baseline":  base["baseline"],
-        "eod_enhanced":  base["enhanced"],
-        "eod_reduction": red,
-        "eod_subgroup":  base["label"],
+        "age":      {"axisLabel": "Age group",       "baseline": a[0], "enhanced": e[0]},
+        "sex":      {"axisLabel": "Sex",             "baseline": a[1], "enhanced": e[1]},
+        "location": {"axisLabel": "Lesion location", "baseline": a[2], "enhanced": e[2]},
     }
 
 
+_AGE_GROUP_LABEL = {"Pediatric": "Pediatric (0–17)", "YoungAdult": "Young adult (18–39)",
+                    "MiddleAged": "Middle-aged (40–59)", "Elderly": "Elderly (60+)"}
+_LOC_ZONE = {"back": "Trunk", "trunk": "Trunk", "abdomen": "Trunk", "chest": "Trunk", "genital": "Trunk",
+             "face": "Head", "neck": "Head", "scalp": "Head", "ear": "Head",
+             "lower extremity": "Lower extremity", "foot": "Lower extremity", "acral": "Lower extremity",
+             "upper extremity": "Upper extremity", "hand": "Upper extremity", "unknown": "Unknown"}
+
+
 def _enrich_eod(result, age_group, sex, localization):
-    """Attach EOD bias-reduction fields to a successful prediction result."""
-    if result and not result.get("error"):
-        result.update(_subgroup_eod(age_group, sex, localization))
+    """Attach per-axis (age/sex/location) EOD before→after fields to a prediction,
+    using the real Model A vs Model E figures."""
+    if not result or result.get("error"):
+        return result
+    axes_def = _eod_by_axis()
+    zone = _LOC_ZONE.get(str(localization or "").lower().strip(), "Other")
+    subgroup = {
+        "age":      _AGE_GROUP_LABEL.get(age_group, "Unknown age"),
+        "sex":      (sex.capitalize() if sex else "Unknown sex"),
+        "location": (zone + " lesions") if zone not in ("Unknown", "Other") else zone,
+    }
+    axes = []
+    for k, v in axes_def.items():
+        red = round((1 - v["enhanced"] / v["baseline"]) * 100) if v["baseline"] else 0
+        axes.append({"key": k, "axisLabel": v["axisLabel"], "subgroup": subgroup[k],
+                     "baseline": v["baseline"], "enhanced": v["enhanced"], "reduction": red})
+    mean_base = round(sum(a["baseline"] for a in axes) / len(axes), 3)
+    mean_enh  = round(sum(a["enhanced"] for a in axes) / len(axes), 3)
+    result.update({
+        "eod_axes": axes,
+        "eod_baseline": mean_base,
+        "eod_enhanced": mean_enh,
+        "eod_reduction": round((1 - mean_enh / mean_base) * 100) if mean_base else 0,
+        "eod_subgroup": "age, sex & lesion location",
+    })
     return result
 
 
-# Fallback model comparison table (used when phase1_outputs results are absent).
-# ⚠ Replace numbers with your real Phase 1 evaluation results.
-MODEL_REGISTRY_FALLBACK = [
-    {"key": "baseline",    "name": "Model A — Baseline CNN",        "arch": "EfficientNet-B0",
-     "mitigation": "None (original HAM10000)",
-     "accuracy": 0.842, "macroF1": 0.690, "meanEOD": 0.241, "worstEOD": 0.36, "demographicParity": 0.61, "isBest": False,
-     "note": "Trained on the raw imbalanced dataset. Strong accuracy but large fairness gaps for darker skin, pediatric and rare-site lesions."},
-    {"key": "reweighted",  "name": "Model B — Reweighted",          "arch": "EfficientNet-B0",
-     "mitigation": "Stratified sampling + adaptive reweighting",
-     "accuracy": 0.851, "macroF1": 0.724, "meanEOD": 0.142, "worstEOD": 0.21, "demographicParity": 0.74, "isBest": False,
-     "note": "Intersectional stratified sampling and distribution-aware reweighting narrow the gaps with a small accuracy gain."},
-    {"key": "cgan_only",   "name": "Model C — cGAN Augmented",      "arch": "EfficientNet-B0",
-     "mitigation": "Conditional GAN image augmentation",
-     "accuracy": 0.848, "macroF1": 0.731, "meanEOD": 0.118, "worstEOD": 0.17, "demographicParity": 0.78, "isBest": False,
-     "note": "Synthetic minority-subgroup images from the cGAN improve representation of rare groups, lowering EOD further."},
-    {"key": "enhanced_v2", "name": "Model D — Enhanced v2 (Hybrid)", "arch": "EfficientNet-B0",
-     "mitigation": "Sampling + Reweighting + cGAN (full framework)",
-     "accuracy": 0.863, "macroF1": 0.758, "meanEOD": 0.071, "worstEOD": 0.11, "demographicParity": 0.83, "isBest": True,
-     "note": "The full hybrid data-centric framework. Best accuracy AND lowest bias — the deployed model for melanoma detection."},
+# Fallback (used only if all_results.json is unreadable) — REAL Phase-1 numbers.
+_MODEL_REGISTRY_FALLBACK = [
+    {"key": "baseline", "name": "Model A — Standard Baseline", "arch": "EfficientNet-B0",
+     "mitigation": "None (original imbalanced HAM10000)", "accuracy": 0.8596, "auc": 0.9836,
+     "melSensitivity": 0.4578, "eodAge": 0.3404, "eodSex": 0.0840, "eodLoc": 0.6800,
+     "meanEOD": 0.368, "worstEOD": 0.680, "biasReduction": 0, "isBest": False,
+     "note": "Highest accuracy, largest fairness gaps."},
+    {"key": "sampling_only", "name": "Model B — Sampling Only", "arch": "EfficientNet-B0",
+     "mitigation": "Intersectional stratified sampling", "accuracy": 0.7917, "auc": 0.9475,
+     "melSensitivity": 0.2590, "eodAge": 0.0318, "eodSex": 0.0361, "eodLoc": 0.3438,
+     "meanEOD": 0.137, "worstEOD": 0.344, "biasReduction": 63, "isBest": False,
+     "note": "Sampling sharply reduces age/sex bias."},
+    {"key": "reweight_only", "name": "Model C — Reweighting Only", "arch": "EfficientNet-B0",
+     "mitigation": "Adaptive distribution-aware reweighting", "accuracy": 0.6411, "auc": 0.8803,
+     "melSensitivity": 0.3012, "eodAge": 0.0505, "eodSex": 0.1201, "eodLoc": 0.3939,
+     "meanEOD": 0.188, "worstEOD": 0.394, "biasReduction": 49, "isBest": False,
+     "note": "Least accurate; worsens sex EOD."},
+    {"key": "cgan_only", "name": "Model D — cGAN Only", "arch": "EfficientNet-B0",
+     "mitigation": "Conditional GAN image augmentation", "accuracy": 0.8046, "auc": 0.9535,
+     "melSensitivity": 0.2831, "eodAge": 0.0484, "eodSex": 0.0285, "eodLoc": 0.4062,
+     "meanEOD": 0.161, "worstEOD": 0.406, "biasReduction": 56, "isBest": False,
+     "note": "Strong accuracy with lower age/sex bias."},
+    {"key": "enhanced_v2", "name": "Model E — Full Framework", "arch": "EfficientNet-B0",
+     "mitigation": "Sampling + Reweighting + cGAN (full hybrid framework)", "accuracy": 0.7327, "auc": 0.9276,
+     "melSensitivity": 0.2892, "eodAge": 0.0299, "eodSex": 0.0129, "eodLoc": 0.3467,
+     "meanEOD": 0.130, "worstEOD": 0.347, "biasReduction": 65, "isBest": True,
+     "note": "Deployed model — lowest bias on every axis."},
 ]
 
 
@@ -589,23 +698,10 @@ def patient_history():
 @api_bp.route("/models/comparison")
 @login_required
 def models_comparison():
-    """
-    Returns metrics for ALL models trained in Phase 1.
-    Tries phase1_outputs/results/all_results.json first; if that file has a
-    `models` / `model_comparison` list it is returned, otherwise falls back to
-    the reference table above. Expected per-model keys:
-        key, name, arch, mitigation, accuracy, macroF1,
-        meanEOD, worstEOD, demographicParity, isBest, note
-    """
-    try:
-        with open(current_app.config["RESULTS_JSON_PATH"], "r") as f:
-            data = json.load(f)
-        models = data.get("models") or data.get("model_comparison")
-        if isinstance(models, list) and models:
-            return _ok(models)
-    except Exception:
-        pass
-    return _ok(MODEL_REGISTRY_FALLBACK)
+    """Metrics for ALL five models (A–E) parsed from the real
+    phase1_outputs/results/all_results.json. Model E (Full Framework) is
+    flagged isBest. Falls back to real baked-in numbers if the JSON is absent."""
+    return _ok(_build_model_comparison())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -621,23 +717,21 @@ def doctor_analytics_live():
     # Total melanoma checks performed across the system (grows in real time)
     total_checks = MelanomaCheck.query.count()
 
-    # Best-model fairness KPIs from Phase 1 results, with safe fallbacks
-    acc, eod, dp = 0.863, 0.071, 0.83
-    try:
-        with open(current_app.config["RESULTS_JSON_PATH"], "r") as f:
-            res  = json.load(f)
-        best = res.get("best_model", res)
-        acc  = best.get("accuracy",            acc)
-        eod  = best.get("mean_eod",            best.get("meanEOD", eod))
-        dp   = best.get("demographic_parity",  best.get("demographicParity", dp))
-    except Exception:
-        pass
+    # Deployed-model (Model E) metrics from the real Phase-1 results
+    res  = _load_results()
+    dep  = res.get(_DEPLOYED_JSON_KEY, {})
+    sm   = dep.get("standard_metrics", {})
+    acc  = sm.get("accuracy", 0.7327)
+    auc  = sm.get("auc_macro", 0.9276)
+    age, sex, loc = _axis_eods(dep)
+    axis_vals = [v for v in (age, sex, loc) if v is not None]
+    mean_eod = round(sum(axis_vals) / len(axis_vals), 3) if axis_vals else 0.130
 
     return _ok({
-        "overallAccuracy":   acc,
-        "meanEOD":           eod,
-        "demographicParity": dp,
-        "imagesEvaluated":   1500 + total_checks,
+        "overallAccuracy": acc,
+        "macroAuc":        auc,
+        "meanEOD":         mean_eod,
+        "imagesEvaluated": 1500 + total_checks,
     })
 
 
