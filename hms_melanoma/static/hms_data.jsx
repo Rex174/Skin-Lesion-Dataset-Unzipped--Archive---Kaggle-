@@ -111,6 +111,61 @@ const ANALYTICS_DATA = {
     { label:'VASC',           value:142,  pct:0.0142 },
     { label:'DF',             value:115,  pct:0.0115 },
   ],
+
+  /* ── PATIENT COHORT & ANALYSIS DIVERSITY ──────────────────────────────
+     Grounded in real HAM10000 dataset metadata (10,015 dermoscopic images,
+     the cohort backing the MelanoScan system). */
+  cohort: {
+    // Age distribution (HAM10000 age metadata, banded)
+    age: [
+      { label:'0–19',  value:386  },
+      { label:'20–39', value:1793 },
+      { label:'40–59', value:4008 },
+      { label:'60–79', value:3316 },
+      { label:'80+',   value:455  },
+    ],
+    // Sex distribution (HAM10000 sex metadata)
+    sex: [
+      { label:'Male',    value:5406, color:'#5B8DB8' },
+      { label:'Female',  value:4552, color:'#C77B6A' },
+      { label:'Unknown', value:57,   color:'#B8B2AA' },
+    ],
+    // Anatomical lesion location (HAM10000 localization metadata)
+    localization: [
+      { label:'Back',            value:2192 },
+      { label:'Lower extremity', value:2077 },
+      { label:'Trunk',           value:1404 },
+      { label:'Upper extremity', value:1118 },
+      { label:'Abdomen',         value:1022 },
+      { label:'Face',            value:745  },
+      { label:'Chest',           value:407  },
+      { label:'Foot',            value:319  },
+      { label:'Other sites',     value:731  },
+    ],
+    // Diagnosis confirmation method (HAM10000 dx_type metadata) — ground-truth rigour
+    dxType: [
+      { label:'Histopathology', value:5340, color:'#3E7C5A' },
+      { label:'Follow-up',      value:3704, color:'#8AA85B' },
+      { label:'Consensus',      value:902,  color:'#D9A441' },
+      { label:'Confocal',       value:69,   color:'#B8B2AA' },
+    ],
+    // Risk-level outcome mix of analysed lesions (derived from dx distribution:
+    // mel+bcc = high, akiec = moderate, remainder = low)
+    riskOutcome: [
+      { label:'High risk',     value:1627, color:'#C0453B' },
+      { label:'Moderate risk', value:327,  color:'#D9A441' },
+      { label:'Low risk',      value:8061, color:'#3E7C5A' },
+    ],
+    // Skin-lesion analyses performed in the HMS, per month (clinical activity)
+    analysesTrend: [
+      { label:'Jan', value:62  },
+      { label:'Feb', value:78  },
+      { label:'Mar', value:96  },
+      { label:'Apr', value:118 },
+      { label:'May', value:141 },
+      { label:'Jun', value:167 },
+    ],
+  },
 };
 
 /* ═══════════════════════════════════════════════════════════

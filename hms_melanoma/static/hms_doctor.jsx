@@ -848,7 +848,7 @@ const DoctorAppointments = () => {
    DOCTOR ANALYTICS
 ════════════════════════════════════════ */
 const DoctorAnalytics = () => {
-  const { eodByAxis, melTprByAge, melTprBySex, melTprByLoc, dxDistribution } = ANALYTICS_DATA;
+  const { eodByAxis, melTprByAge, melTprBySex, melTprByLoc, dxDistribution, cohort } = ANALYTICS_DATA;
   const { data: liveA, online } = useLive(
     () => apiFetch('/api/doctor/analytics-live'),
     () => LiveSim.analytics(),
@@ -935,6 +935,64 @@ const DoctorAnalytics = () => {
               </div>
             ))}
           </Card>
+        </div>
+
+        {/* ═══ PATIENT COHORT & ANALYSIS DIVERSITY ═══ */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '30px 0 16px' }}>
+          <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Patient Cohort &amp; Analysis Diversity</div>
+          <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+        </div>
+
+        {/* Row 1: Age distribution + Lesion location */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Patient Age Distribution</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Cohort skews middle-aged and older — key for melanoma screening</div>
+            <BarChart data={cohort.age} height={190} colorFn={() => 'var(--secondary)'} />
+          </Card>
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Lesion Location Diversity</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Anatomical site of the analysed skin lesions</div>
+            <HBarChart data={cohort.localization} color="var(--primary)" />
+          </Card>
+        </div>
+
+        {/* Row 2: Sex + Confirmation method + Risk outcome donuts */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 20 }}>
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Patient Sex</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Gender balance of the cohort</div>
+            <DonutChart data={cohort.sex} centerLabel="10k" centerSub="patients" />
+          </Card>
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Diagnosis Confirmation</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>How each ground-truth label was verified</div>
+            <DonutChart data={cohort.dxType} centerLabel={`${Math.round(cohort.dxType[0].value / cohort.dxType.reduce((s,d)=>s+d.value,0) * 100)}%`} centerSub="histo." />
+          </Card>
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Risk Outcome Mix</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Risk level of analysed lesions</div>
+            <DonutChart data={cohort.riskOutcome} centerLabel={`${(cohort.riskOutcome[0].value / cohort.riskOutcome.reduce((s,d)=>s+d.value,0) * 100).toFixed(0)}%`} centerSub="high" />
+          </Card>
+        </div>
+
+        {/* Row 3: Analyses over time */}
+        <Card>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Skin-Lesion Analyses Performed</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Melanoma detection scans conducted in the HMS, per month</div>
+            </div>
+            <Badge variant="success">▲ {Math.round((cohort.analysesTrend.at(-1).value / cohort.analysesTrend[0].value - 1) * 100)}% since Jan</Badge>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <AreaTrend data={cohort.analysesTrend} height={170} color="var(--primary)" />
+          </div>
+        </Card>
+
+        <div style={{ marginTop: 14, fontSize: 11, color: 'var(--text-light)', lineHeight: 1.6 }}>
+          Cohort diversity charts are grounded in HAM10000 dataset metadata (10,015 dermoscopic images). Analyses-performed reflects MelanoScan HMS clinical activity.
         </div>
       </PageContent>
     </div>

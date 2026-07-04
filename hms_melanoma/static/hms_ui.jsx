@@ -316,6 +316,102 @@ const GroupedBarChart = ({ data, height = 200, max, seriesA = { key: 'baseline',
   );
 };
 
+/* ── DonutChart — SVG ring with center label + legend ────── */
+const DonutChart = ({ data, size = 150, thickness = 24, centerLabel, centerSub, showLegend = true }) => {
+  const total = data.reduce((s, d) => s + d.value, 0) || 1;
+  const r = (size - thickness) / 2;
+  const cx = size / 2, cy = size / 2;
+  const circ = 2 * Math.PI * r;
+  const palette = ['var(--primary)', 'var(--secondary)', 'var(--accent)', 'var(--info)', 'var(--success)'];
+  let offset = 0;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--surface-2)" strokeWidth={thickness} />
+        {data.map((d, i) => {
+          const frac = d.value / total;
+          const dash = frac * circ;
+          const seg = (
+            <circle key={d.label} cx={cx} cy={cy} r={r} fill="none"
+              stroke={d.color || palette[i % palette.length]} strokeWidth={thickness}
+              strokeDasharray={`${dash} ${circ - dash}`} strokeDashoffset={-offset}
+              transform={`rotate(-90 ${cx} ${cy})`} strokeLinecap="butt">
+              <title>{`${d.label}: ${d.value.toLocaleString()} (${(frac * 100).toFixed(1)}%)`}</title>
+            </circle>
+          );
+          offset += dash;
+          return seg;
+        })}
+        {centerLabel != null && (
+          <text x={cx} y={cy - 2} textAnchor="middle" style={{ fontSize: 20, fontWeight: 800, fill: 'var(--text)' }}>{centerLabel}</text>
+        )}
+        {centerSub && (
+          <text x={cx} y={cy + 15} textAnchor="middle" style={{ fontSize: 10, fill: 'var(--text-muted)' }}>{centerSub}</text>
+        )}
+      </svg>
+      {showLegend && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+          {data.map((d, i) => (
+            <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+              <span style={{ width: 11, height: 11, borderRadius: 3, background: d.color || palette[i % palette.length], flexShrink: 0 }} />
+              <span style={{ color: 'var(--text)', flex: 1 }}>{d.label}</span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{((d.value / total) * 100).toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ── HBarChart — horizontal bars with label + value ──────── */
+const HBarChart = ({ data, color = 'var(--primary)', labelWidth = 118, valueFmt }) => {
+  const hi = Math.max(...data.map(d => d.value)) || 1;
+  const fmt = valueFmt || (v => v.toLocaleString());
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      {data.map(d => (
+        <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: labelWidth, fontSize: 12.5, color: 'var(--text)', textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.label}</div>
+          <div style={{ flex: 1, height: 16, background: 'var(--surface-2)', borderRadius: 5, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${(d.value / hi) * 100}%`, background: d.color || color, borderRadius: 5, minWidth: 3, transition: 'width 0.9s ease' }} />
+          </div>
+          <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', flexShrink: 0 }}>{fmt(d.value)}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ── AreaTrend — filled line chart for a time series ─────── */
+const AreaTrend = ({ data, height = 150, color = 'var(--primary)', valueSuffix = '' }) => {
+  const w = 520, pad = 8;
+  const hi = Math.max(...data.map(d => d.value)) * 1.15 || 1;
+  const stepX = (w - pad * 2) / (data.length - 1);
+  const pts = data.map((d, i) => [pad + i * stepX, height - 26 - (d.value / hi) * (height - 40)]);
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const area = `${line} L ${pts[pts.length - 1][0].toFixed(1)} ${height - 26} L ${pts[0][0].toFixed(1)} ${height - 26} Z`;
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+      <defs>
+        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill="url(#areaGrad)" />
+      <path d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {pts.map((p, i) => (
+        <g key={i}>
+          <circle cx={p[0]} cy={p[1]} r="3.5" fill="var(--surface)" stroke={color} strokeWidth="2" />
+          <text x={p[0]} y={p[1] - 10} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: 'var(--text)' }}>{data[i].value}{valueSuffix}</text>
+          <text x={p[0]} y={height - 8} textAnchor="middle" style={{ fontSize: 11, fill: 'var(--text-muted)' }}>{data[i].label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+};
+
 /* ── ConfidenceBar ───────────────────────────────────────── */
 const ConfidenceBar = ({ label, value, isMain }) => (
   <div style={{ marginBottom: 10 }}>
@@ -352,4 +448,5 @@ Object.assign(window, {
   Avatar, Badge, RiskBadge, StatusBadge, Card, StatCard, Divider,
   Btn, SearchBar, PageContent, SectionHeader, EmptyState,
   TopBar, Sidebar, BarChart, GroupedBarChart, ConfidenceBar, NotifIcon,
+  DonutChart, HBarChart, AreaTrend,
 });
