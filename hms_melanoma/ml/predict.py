@@ -58,7 +58,7 @@ def load_model(model_key: str, model_path: str):
     global _models
     if model_key not in _models:
         try:
-            import keras
+            from tensorflow import keras 
             _models[model_key] = keras.models.load_model(model_path)
             print(f"[OK] Model loaded: {model_key} from {model_path}")
         except Exception as e:
@@ -77,16 +77,15 @@ def _load_label_map(label_map_path: str) -> dict:
 
 def preprocess_image(image_path: str) -> np.ndarray:
     """
-    Load an image from disk and preprocess it for EfficientNet-B0:
-    - Resize to 224x224
-    - Convert to RGB
-    - Normalize to [0, 1]
-    Returns: np.ndarray of shape (1, 224, 224, 3)
+    Load an image from disk and preprocess it for EfficientNet-B0.
+    IMPORTANT: Do NOT divide by 255. EfficientNetB0(weights="imagenet")
+    normalises [0,255] inputs internally. This must match the exact
+    preprocessing used during training (Cell 4 / Cell 9 of Phase 3 notebook).
     """
     img = Image.open(image_path).convert("RGB")
     img = img.resize(IMG_SIZE, Image.BILINEAR)
-    arr = np.array(img, dtype=np.float32) / 255.0
-    return np.expand_dims(arr, axis=0)   # (1, 224, 224, 3)
+    arr = np.array(img, dtype=np.float32)   # ← [0, 255] — NO /255.0
+    return np.expand_dims(arr, axis=0)      # (1, 224, 224, 3)
 
 
 def predict(
