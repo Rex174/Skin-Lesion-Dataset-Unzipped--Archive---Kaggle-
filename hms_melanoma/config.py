@@ -36,9 +36,9 @@ class Config:
     SESSION_COOKIE_SECURE   = False  # False for HTTP localhost dev
 
     # ── ML Model paths — UPDATE THESE to your Phase 1 output folder ──────────
-    PHASE1_OUTPUTS    = BASE_DIR / "phase1_outputs"  # relative to hms_melanoma folder
-    MODEL_BASELINE    = str(PHASE1_OUTPUTS / "models" / "Model_A_Baseline_final.h5")
-    MODEL_ENHANCED_V2 = str(PHASE1_OUTPUTS / "models" / "Model_C_Enhanced_v2_final.h5")
+    PHASE1_OUTPUTS    = BASE_DIR / "phase1_outputs" 
+    MODEL_BASELINE    = str(PHASE1_OUTPUTS / "models" / "Model_A_Standard_Baseline_final.h5") 
+    MODEL_ENHANCED_V2 = str(PHASE1_OUTPUTS / "models" / "Model_E_Full_Framework_final.h5")
     LABEL_MAP_PATH    = str(PHASE1_OUTPUTS / "label_map.json")
     RESULTS_JSON_PATH = str(PHASE1_OUTPUTS / "results" / "all_results.json")
 
