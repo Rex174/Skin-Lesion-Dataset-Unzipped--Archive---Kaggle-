@@ -44,6 +44,15 @@ function applyTheme(theme) {
 }
 
 /* ── Login screen ───────────────────────────────────────── */
+/* Demo accounts for OFFLINE fallback only — these mirror the users the Flask
+   backend seeds (app.py init_db). When the backend is running, real login is
+   used instead and these are never consulted. */
+const DEMO_ACCOUNTS = {
+  dr_ramaneiss: { password: 'doctor123',  user: { username: 'dr_ramaneiss', role: 'doctor',  full_name: 'Dr. Ramaneiss', specialization: 'Dermatology' } },
+  john_doe:     { password: 'patient123', user: { username: 'john_doe',     role: 'patient', full_name: 'John Doe' } },
+  jane_smith:   { password: 'patient123', user: { username: 'jane_smith',   role: 'patient', full_name: 'Jane Smith' } },
+};
+
 const LoginScreen = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = React.useState(null);
   const [form, setForm]   = React.useState({ username: '', password: '' });
@@ -62,7 +71,18 @@ const LoginScreen = ({ onLogin }) => {
       window.HMS_USER = user;           // make profile available globally
       onLogin(user.role);
     } catch (err) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      // Offline fallback: when the Flask backend isn't reachable (e.g. this
+      // preview, or HMS.html opened directly), authenticate against the same
+      // demo accounts the backend seeds, so progress can still be reviewed.
+      const demo = DEMO_ACCOUNTS[form.username.trim().toLowerCase()];
+      if (demo && demo.password === form.password) {
+        window.HMS_USER = { ...demo.user, _demo: true };
+        onLogin(demo.user.role);
+      } else if (demo) {
+        setError('Incorrect password for this account.');
+      } else {
+        setError('Unknown username. Try dr_ramaneiss / doctor123 (see hint below).');
+      }
     } finally {
       setLoading(false);
     }

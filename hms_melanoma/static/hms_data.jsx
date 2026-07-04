@@ -77,42 +77,39 @@ const DOCTOR_USER  = { id:'D001', name:'Dr. Ramaneiss Pillai', role:'doctor', sp
 const PATIENT_USER = PATIENTS[0];
 
 const ANALYTICS_DATA = {
-  accuracyBySkinType: [
-    { label:'Type I',   value:0.91, count:312  },
-    { label:'Type II',  value:0.89, count:2847 },
-    { label:'Type III', value:0.87, count:3241 },
-    { label:'Type IV',  value:0.82, count:2103 },
-    { label:'Type V',   value:0.74, count:891  },
-    { label:'Type VI',  value:0.68, count:621  },
+  /* Equal Opportunity Difference per protected axis — REAL values:
+     baseline = Model A (Standard Baseline), deployed = Model E (Full Framework). */
+  eodByAxis: [
+    { label:'Age group',       baseline:0.3404, enhanced:0.0299 },
+    { label:'Sex',             baseline:0.0840, enhanced:0.0129 },
+    { label:'Lesion location', baseline:0.6800, enhanced:0.3467 },
   ],
-  eodBySkinType: [
-    { label:'Type I',   value:0.02 },
-    { label:'Type II',  value:0.03 },
-    { label:'Type III', value:0.05 },
-    { label:'Type IV',  value:0.11 },
-    { label:'Type V',   value:0.18 },
-    { label:'Type VI',  value:0.24 },
+  /* Melanoma true-positive rate (sensitivity) per subgroup — shows how the
+     framework equalises TPR across groups (from fairness.TPR_per_group). */
+  melTprByAge: [
+    { label:'Young adult', baseline:0.6923, enhanced:0.3077 },
+    { label:'Middle-aged', baseline:0.3519, enhanced:0.2778 },
+    { label:'Elderly',     baseline:0.4848, enhanced:0.2929 },
   ],
-  accuracyByAge: [
-    { label:'0-17',  value:0.79 },
-    { label:'18-35', value:0.88 },
-    { label:'36-50', value:0.90 },
-    { label:'51-65', value:0.87 },
-    { label:'65+',   value:0.83 },
+  melTprBySex: [
+    { label:'Female', baseline:0.4062, enhanced:0.2812 },
+    { label:'Male',   baseline:0.4902, enhanced:0.2941 },
   ],
-  accuracyBySex: [
-    { label:'Male',   value:0.87 },
-    { label:'Female', value:0.85 },
-    { label:'Other',  value:0.80 },
+  melTprByLoc: [
+    { label:'Trunk',     baseline:0.4533, enhanced:0.3467 },
+    { label:'Upper ext.',baseline:0.5938, enhanced:0.3438 },
+    { label:'Lower ext.',baseline:0.4242, enhanced:0.1818 },
+    { label:'Head',      baseline:0.3200, enhanced:0.2000 },
   ],
+  /* Real HAM10000 class distribution (10,015 dermoscopic images) */
   dxDistribution: [
-    { label:'Nevi (nv)',      value:6705, pct:0.669 },
-    { label:'Melanoma (mel)', value:1113, pct:0.111 },
-    { label:'BKL',            value:1099, pct:0.110 },
-    { label:'BCC',            value:514,  pct:0.051 },
-    { label:'AKIEC',          value:327,  pct:0.033 },
-    { label:'DF',             value:115,  pct:0.011 },
-    { label:'VASC',           value:142,  pct:0.014 },
+    { label:'Nevi (nv)',      value:6705, pct:0.6695 },
+    { label:'Melanoma (mel)', value:1113, pct:0.1112 },
+    { label:'BKL',            value:1099, pct:0.1097 },
+    { label:'BCC',            value:514,  pct:0.0513 },
+    { label:'AKIEC',          value:327,  pct:0.0327 },
+    { label:'VASC',           value:142,  pct:0.0142 },
+    { label:'DF',             value:115,  pct:0.0115 },
   ],
 };
 

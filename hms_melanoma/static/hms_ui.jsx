@@ -282,6 +282,40 @@ const BarChart = ({ data, height = 180, colorFn }) => {
   );
 };
 
+/* ── GroupedBarChart — two series per label (e.g. baseline vs deployed) ── */
+const GroupedBarChart = ({ data, height = 200, max, seriesA = { key: 'baseline', label: 'Baseline (Model A)', color: 'var(--danger)' }, seriesB = { key: 'enhanced', label: 'Deployed (Model E)', color: 'var(--success)' }, asPercent = false, decimals = 3 }) => {
+  const hi = max != null ? max : Math.max(...data.flatMap(d => [d[seriesA.key], d[seriesB.key]]));
+  const fmt = v => asPercent ? `${(v * 100).toFixed(0)}%` : v.toFixed(decimals);
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height, padding: '0 4px' }}>
+        {data.map(d => (
+          <div key={d.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 5, width: '100%', height: height - 34 }}>
+              {[seriesA, seriesB].map(s => (
+                <div key={s.key} style={{ flex: 1, maxWidth: 34, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 700, color: s.color, marginBottom: 3 }}>{fmt(d[s.key])}</div>
+                  <div style={{ width: '100%', height: hi > 0 ? `${(d[s.key] / hi) * 100}%` : '0%', background: s.color, borderRadius: '4px 4px 0 0', minHeight: 3, transition: 'height 0.9s ease' }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ width: '100%', height: 1, background: 'var(--border)' }} />
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 5, textAlign: 'center', lineHeight: 1.3 }}>{d.label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 12, fontSize: 11 }}>
+        {[seriesA, seriesB].map(s => (
+          <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: s.color }} />
+            <span style={{ color: 'var(--text-muted)' }}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 /* ── ConfidenceBar ───────────────────────────────────────── */
 const ConfidenceBar = ({ label, value, isMain }) => (
   <div style={{ marginBottom: 10 }}>
@@ -317,5 +351,5 @@ const NotifIcon = ({ type }) => {
 Object.assign(window, {
   Avatar, Badge, RiskBadge, StatusBadge, Card, StatCard, Divider,
   Btn, SearchBar, PageContent, SectionHeader, EmptyState,
-  TopBar, Sidebar, BarChart, ConfidenceBar, NotifIcon,
+  TopBar, Sidebar, BarChart, GroupedBarChart, ConfidenceBar, NotifIcon,
 });

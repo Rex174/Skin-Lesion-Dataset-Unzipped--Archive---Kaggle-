@@ -20,68 +20,117 @@
 const { useState: useStateLive, useEffect: useEffectLive, useRef: useRefLive } = React;
 
 /* ═══════════════════════════════════════════════════════════
-   MODEL REGISTRY  — all models trained in Phase 1
-   ⚠ Replace these numbers with your real Phase 1 results
-     (phase1_outputs/results/all_results.json). The backend
-     endpoint /api/models/comparison overrides this at runtime.
+   MODEL REGISTRY  — the five models actually trained in Phase 1.
+   Numbers are the REAL evaluation results from
+   phase1_outputs/results/all_results.json. The deployed model is
+   Model E (Full Framework), per model_paths.json → "enhanced_v2".
+   Fairness is measured on AGE GROUP, SEX and LESION LOCATION
+   (HAM10000 has no skin-tone labels). meanEOD = mean of the three
+   axis EODs; worstEOD = the largest. The backend endpoint
+   /api/models/comparison overrides this at runtime from the JSON.
 ═══════════════════════════════════════════════════════════ */
 const MODEL_REGISTRY = [
   {
-    key: 'baseline', name: 'Model A — Baseline CNN',
-    arch: 'EfficientNet-B0', mitigation: 'None (original HAM10000)',
-    accuracy: 0.842, macroF1: 0.690, meanEOD: 0.241, worstEOD: 0.36,
-    demographicParity: 0.61, isBest: false,
-    note: 'Trained on the raw imbalanced dataset. Strong overall accuracy but large fairness gaps for darker skin tones, pediatric and rare-site lesions.',
+    key: 'baseline', name: 'Model A — Standard Baseline',
+    arch: 'EfficientNet-B0', mitigation: 'None (original imbalanced HAM10000)',
+    accuracy: 0.8596, auc: 0.9836, sensitivity: 0.7648, melSensitivity: 0.4578, ece: 0.0192,
+    eodAge: 0.3404, eodSex: 0.0840, eodLoc: 0.6800, meanEOD: 0.368, worstEOD: 0.680, isBest: false,
+    note: 'Trained on the raw imbalanced dataset. Highest accuracy and melanoma sensitivity, but the largest fairness gaps — especially across lesion location (EOD 0.68) and age group (EOD 0.34).',
   },
   {
-    key: 'reweighted', name: 'Model B — Reweighted',
-    arch: 'EfficientNet-B0', mitigation: 'Stratified sampling + adaptive reweighting',
-    accuracy: 0.851, macroF1: 0.724, meanEOD: 0.142, worstEOD: 0.21,
-    demographicParity: 0.74, isBest: false,
-    note: 'Intersectional stratified sampling and distribution-aware reweighting markedly narrow the gaps, with a small accuracy gain.',
+    key: 'sampling_only', name: 'Model B — Sampling Only',
+    arch: 'EfficientNet-B0', mitigation: 'Intersectional stratified sampling',
+    accuracy: 0.7917, auc: 0.9475, sensitivity: 0.5865, melSensitivity: 0.2590, ece: 0.0585,
+    eodAge: 0.0318, eodSex: 0.0361, eodLoc: 0.3438, meanEOD: 0.137, worstEOD: 0.344, isBest: false,
+    note: 'Stratified sampling sharply reduces age- and sex-based bias, at a cost to overall accuracy and melanoma sensitivity.',
   },
   {
-    key: 'cgan_only', name: 'Model C — cGAN Augmented',
+    key: 'reweight_only', name: 'Model C — Reweighting Only',
+    arch: 'EfficientNet-B0', mitigation: 'Adaptive distribution-aware reweighting',
+    accuracy: 0.6411, auc: 0.8803, sensitivity: 0.5736, melSensitivity: 0.3012, ece: 0.0937,
+    eodAge: 0.0505, eodSex: 0.1201, eodLoc: 0.3939, meanEOD: 0.188, worstEOD: 0.394, isBest: false,
+    note: 'Reweighting alone lowers age-group bias but is the least accurate and least calibrated, and worsens sex-based EOD.',
+  },
+  {
+    key: 'cgan_only', name: 'Model D — cGAN Only',
     arch: 'EfficientNet-B0', mitigation: 'Conditional GAN image augmentation',
-    accuracy: 0.848, macroF1: 0.731, meanEOD: 0.118, worstEOD: 0.17,
-    demographicParity: 0.78, isBest: false,
-    note: 'Synthetic minority-subgroup images from the cGAN improve representation of rare groups, lowering EOD further.',
+    accuracy: 0.8046, auc: 0.9535, sensitivity: 0.6371, melSensitivity: 0.2831, ece: 0.0634,
+    eodAge: 0.0484, eodSex: 0.0285, eodLoc: 0.4062, meanEOD: 0.161, worstEOD: 0.406, isBest: false,
+    note: 'Synthetic minority-subgroup images preserve strong accuracy while lowering age- and sex-based bias.',
   },
   {
-    key: 'enhanced_v2', name: 'Model D — Enhanced v2 (Hybrid)',
-    arch: 'EfficientNet-B0', mitigation: 'Sampling + Reweighting + cGAN (full framework)',
-    accuracy: 0.863, macroF1: 0.758, meanEOD: 0.071, worstEOD: 0.11,
-    demographicParity: 0.83, isBest: true,
-    note: 'The full hybrid data-centric framework. Best accuracy AND lowest bias — selected as the deployed model for melanoma detection.',
+    key: 'enhanced_v2', name: 'Model E — Full Framework',
+    arch: 'EfficientNet-B0', mitigation: 'Sampling + Reweighting + cGAN (full hybrid framework)',
+    accuracy: 0.7327, auc: 0.9276, sensitivity: 0.6081, melSensitivity: 0.2892, ece: 0.0543,
+    eodAge: 0.0299, eodSex: 0.0129, eodLoc: 0.3467, meanEOD: 0.130, worstEOD: 0.347, isBest: true,
+    note: 'The full hybrid data-centric framework — the deployed model. Lowest bias on every axis (age EOD 0.030, sex EOD 0.013), trading ~13 points of accuracy for substantially fairer predictions.',
   },
 ];
 
-/* Per-demographic-subgroup EOD before/after framework — drives the
-   per-result "bias reduction" panel. Keyed by simplified subgroup. */
-const SUBGROUP_EOD = {
-  // skinTypeBand: { baseline, enhanced }
-  light:  { label: 'Lighter skin (Type I–III)', baseline: 0.06, enhanced: 0.03 },
-  medium: { label: 'Medium skin (Type IV)',     baseline: 0.13, enhanced: 0.05 },
-  dark:   { label: 'Darker skin (Type V–VI)',   baseline: 0.27, enhanced: 0.08 },
-  pediatric: { label: 'Pediatric (0–17)',       baseline: 0.31, enhanced: 0.09 },
+/* ═══════════════════════════════════════════════════════════
+   EOD BY FAIRNESS AXIS  — real baseline (Model A) vs deployed
+   (Model E) Equal Opportunity Difference on each protected axis.
+   Drives the analytics charts and the per-result bias panel.
+═══════════════════════════════════════════════════════════ */
+const EOD_BY_AXIS = {
+  age:      { axisLabel: 'Age group',       baseline: 0.3404, enhanced: 0.0299 },
+  sex:      { axisLabel: 'Sex',             baseline: 0.0840, enhanced: 0.0129 },
+  location: { axisLabel: 'Lesion location', baseline: 0.6800, enhanced: 0.3467 },
 };
 
-function skinBand(skinType) {
-  if (['V','VI'].includes(skinType)) return 'dark';
-  if (skinType === 'IV') return 'medium';
-  return 'light';
+/* Map a patient's raw fields → the subgroup labels used in Phase 1 */
+function ageGroupOf(age) {
+  if (age == null) return 'Unknown';
+  if (age < 18) return 'Pediatric';
+  if (age < 40) return 'YoungAdult';
+  if (age < 60) return 'MiddleAged';
+  return 'Elderly';
+}
+const AGE_GROUP_LABEL = { Pediatric:'Pediatric (0–17)', YoungAdult:'Young adult (18–39)', MiddleAged:'Middle-aged (40–59)', Elderly:'Elderly (60+)', Unknown:'Unknown age' };
+
+function locZoneOf(localization) {
+  const z = {
+    back:'Trunk', trunk:'Trunk', abdomen:'Trunk', chest:'Trunk', genital:'Trunk',
+    face:'Head', neck:'Head', scalp:'Head', ear:'Head',
+    'lower extremity':'Lower extremity', foot:'Lower extremity', acral:'Lower extremity',
+    'upper extremity':'Upper extremity', hand:'Upper extremity', unknown:'Unknown',
+  };
+  return z[String(localization || '').toLowerCase().trim()] || 'Other';
 }
 
-/* EOD lookup for a given patient → before/after + reduction % */
+/* Per-patient fairness summary across all three axes → before/after
+   EOD, per-axis reduction, and an aggregate headline. Keeps the
+   legacy keys (baseline/enhanced/reduction/label) pointing at the
+   aggregate so existing result panels keep working. */
 function eodForPatient(patient) {
-  let band = 'medium';
-  if (patient) {
-    if ((patient.age != null && patient.age < 18)) band = 'pediatric';
-    else band = skinBand(patient.skinType);
-  }
-  const e = SUBGROUP_EOD[band] || SUBGROUP_EOD.medium;
-  const reduction = e.baseline > 0 ? Math.round((1 - e.enhanced / e.baseline) * 100) : 0;
-  return { band, label: e.label, baseline: e.baseline, enhanced: e.enhanced, reduction };
+  const age  = patient?.age;
+  const sex  = patient?.sex;
+  const loc  = patient?.localization;
+  const subgroupLabels = {
+    age:      AGE_GROUP_LABEL[ageGroupOf(age)] || 'Unknown age',
+    sex:      sex ? (sex[0].toUpperCase() + sex.slice(1).toLowerCase()) : 'Unknown sex',
+    location: locZoneOf(loc) + (locZoneOf(loc) === 'Unknown' || locZoneOf(loc) === 'Other' ? '' : ' lesions'),
+  };
+  const axes = Object.entries(EOD_BY_AXIS).map(([key, v]) => ({
+    key,
+    axisLabel: v.axisLabel,
+    subgroup:  subgroupLabels[key],
+    baseline:  v.baseline,
+    enhanced:  v.enhanced,
+    reduction: v.baseline > 0 ? Math.round((1 - v.enhanced / v.baseline) * 100) : 0,
+  }));
+  const meanBaseline = +(axes.reduce((s, a) => s + a.baseline, 0) / axes.length).toFixed(3);
+  const meanEnhanced = +(axes.reduce((s, a) => s + a.enhanced, 0) / axes.length).toFixed(3);
+  const meanReduction = meanBaseline > 0 ? Math.round((1 - meanEnhanced / meanBaseline) * 100) : 0;
+  // Is this patient in a historically underrepresented subgroup?
+  const zone = locZoneOf(loc);
+  const underrepresented = ageGroupOf(age) === 'Pediatric' || zone === 'Unknown' || zone === 'Head';
+  return {
+    axes, meanBaseline, meanEnhanced, meanReduction, underrepresented,
+    // legacy aggregate keys
+    label: 'age, sex & lesion location',
+    baseline: meanBaseline, enhanced: meanEnhanced, reduction: meanReduction,
+  };
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -103,10 +152,10 @@ const LiveSim = (function () {
     analysesToday: 3,
     highRiskCount: PATIENTS.filter(p => p.riskLevel === 'high').length,
     recentChecks: DETECTIONS.slice(0, 6).map(d => ({ ...d })),
-    // analytics live drift around the Phase-1 baseline
-    overallAccuracy: 0.863,
-    meanEOD: 0.071,
-    demographicParity: 0.83,
+    // analytics live baseline = REAL deployed-model (Model E) metrics
+    overallAccuracy: 0.7327,
+    macroAuc: 0.9276,
+    meanEOD: 0.130,
     imagesEvaluated: 1503,
     tick: 0,
   };
@@ -143,12 +192,12 @@ const LiveSim = (function () {
     }
     // Occasionally a new patient registers
     if (state.tick % 5 === 0) state.totalPatients += 1;
-    // Analytics drift (tiny, bounded) — looks alive without lying much
+    // Analytics drift (tiny, bounded) — looks alive without misstating results
     const jitter = (base, amp) => +(base + (Math.random() - 0.5) * amp).toFixed(3);
-    state.overallAccuracy   = Math.min(0.9,  Math.max(0.85, jitter(state.overallAccuracy, 0.004)));
-    state.meanEOD           = Math.min(0.09,  Math.max(0.05, jitter(state.meanEOD, 0.004)));
-    state.demographicParity = Math.min(0.86, Math.max(0.80, jitter(state.demographicParity, 0.006)));
-    state.imagesEvaluated  += Math.floor(Math.random() * 3);
+    state.overallAccuracy = Math.min(0.75, Math.max(0.72, jitter(state.overallAccuracy, 0.003)));
+    state.macroAuc        = Math.min(0.94, Math.max(0.92, jitter(state.macroAuc, 0.003)));
+    state.meanEOD         = Math.min(0.14, Math.max(0.12, jitter(state.meanEOD, 0.003)));
+    state.imagesEvaluated += Math.floor(Math.random() * 3);
     notify();
   }
 
@@ -170,8 +219,8 @@ const LiveSim = (function () {
     analytics() {
       return {
         overallAccuracy: state.overallAccuracy,
+        macroAuc: state.macroAuc,
         meanEOD: state.meanEOD,
-        demographicParity: state.demographicParity,
         imagesEvaluated: state.imagesEvaluated,
       };
     },
@@ -305,20 +354,21 @@ function simulatePrediction(patient, localization) {
     confidence_score: +conf.toFixed(4),
     risk_level: riskMap[dx] || 'low',
     all_probabilities: Object.fromEntries(Object.entries(probs).map(([k,v]) => [k, +(v*100).toFixed(2)])),
-    fairness_note: e.band === 'dark' || e.band === 'pediatric'
-      ? `This patient belongs to an underrepresented subgroup (${e.label}). The Enhanced v2 model applied synthetic cGAN augmentation and reweighting to improve fairness for this group.`
+    fairness_note: e.underrepresented
+      ? `This patient belongs to a historically underrepresented subgroup (${e.axes.map(a=>a.subgroup).join(', ')}). The Full Framework model (Model E) applied stratified sampling, reweighting and synthetic cGAN augmentation to improve fairness for such groups.`
       : null,
     model_used: 'enhanced_v2',
-    eod_baseline: e.baseline,
-    eod_enhanced: e.enhanced,
-    eod_reduction: e.reduction,
+    eod_axes: e.axes,
+    eod_baseline: e.meanBaseline,
+    eod_enhanced: e.meanEnhanced,
+    eod_reduction: e.meanReduction,
     eod_subgroup: e.label,
     _demo: true,
   };
 }
 
 Object.assign(window, {
-  MODEL_REGISTRY, SUBGROUP_EOD, eodForPatient, skinBand,
+  MODEL_REGISTRY, EOD_BY_AXIS, eodForPatient, ageGroupOf, locZoneOf, AGE_GROUP_LABEL,
   ModelsApi, LiveSim, useLive, useSim, AnimatedNumber, LiveBadge,
   simulatePrediction,
 });

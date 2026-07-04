@@ -579,10 +579,10 @@ const DoctorDetection = ({ detectionPatientId }) => {
         {/* ── RESULT STEP ─────────────────────────────────────────────────── */}
         {step === 'result' && resultE && (() => {
           const eod = eodForPatient(patient);
-          const eodBase = resultE.eodBaseline ?? eod.baseline;
-          const eodEnh  = resultE.eodEnhanced ?? eod.enhanced;
-          const eodRed  = resultE.eodReduction ?? eod.reduction;
-          const eodLabel = resultE.eodSubgroup ?? eod.label;
+          const eodAxes = resultE.eodAxes || eod.axes;
+          const eodBase = resultE.eodBaseline ?? eod.meanBaseline;
+          const eodEnh  = resultE.eodEnhanced ?? eod.meanEnhanced;
+          const eodRed  = resultE.eodReduction ?? eod.meanReduction;
           return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1000 }}>
             {/* Header row with image and actions */}
@@ -596,7 +596,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
                 </div>
               </Card>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{patient?.name || 'Patient'} · {patient ? `Skin Type ${patient.skinType}` : ''} · {localization}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{patient?.name || 'Patient'} · {patient ? `${patient.age}y · ${patient.sex}` : ''} · {localization}</div>
                 <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--text)' }}>{resultE.dxLabel}</div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 4 }}>
                   <span style={{ fontSize: 20, fontWeight: 900, color: resultE.riskLevel === 'high' ? 'var(--danger)' : resultE.riskLevel === 'medium' ? 'var(--warning)' : 'var(--success)' }}>{(resultE.confidence * 100).toFixed(1)}%</span>
@@ -621,51 +621,47 @@ const DoctorDetection = ({ detectionPatientId }) => {
 
             {/* Two-column: best-model result + EOD/bias panel */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20, alignItems: 'start' }}>
-              <ModelResultCard result={resultE} modelLabel="Model D — Enhanced v2" isEnhanced={true} />
+              <ModelResultCard result={resultE} modelLabel="Model E — Full Framework" isEnhanced={true} />
 
-              {/* ── EOD / BIAS REDUCTION PANEL ── */}
+              {/* ── EOD / BIAS REDUCTION PANEL (age · sex · location) ── */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Card style={{ border: '2px solid var(--success)', background: 'linear-gradient(150deg, var(--success-bg), var(--surface))' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                     <Icon name="shield" size={17} style={{ color: 'var(--success)' }} />
-                    <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>Bias Reduction (EOD)</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>Fairness for this patient</div>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
-                    Equal Opportunity Difference for this patient's demographic subgroup:
-                    <strong style={{ color: 'var(--text)' }}> {eodLabel}</strong>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+                    Equal Opportunity Difference on the protected axes this patient sits on, comparing the baseline model with the deployed Full Framework.
                   </div>
 
-                  {/* Big reduction number */}
-                  <div style={{ textAlign: 'center', padding: '8px 0 14px' }}>
-                    <div style={{ fontSize: 44, fontWeight: 900, color: 'var(--success)', lineHeight: 1 }}>
+                  {/* Aggregate reduction */}
+                  <div style={{ textAlign: 'center', padding: '4px 0 12px' }}>
+                    <div style={{ fontSize: 40, fontWeight: 900, color: 'var(--success)', lineHeight: 1 }}>
                       <AnimatedNumber value={eodRed} suffix="%" />
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>reduction in bias vs the baseline model</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>mean bias reduction · EOD {eodBase.toFixed(3)} → {eodEnh.toFixed(3)}</div>
                   </div>
 
-                  {/* Before / after bars */}
-                  {[
-                    { label: 'Baseline model', val: eodBase, color: 'var(--danger)' },
-                    { label: 'Enhanced v2 (deployed)', val: eodEnh, color: 'var(--success)' },
-                  ].map(row => (
-                    <div key={row.label} style={{ marginBottom: 10 }}>
+                  {/* Per-axis rows */}
+                  {eodAxes.map(ax => (
+                    <div key={ax.key} style={{ marginBottom: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                        <span style={{ color: 'var(--text)' }}>{row.label}</span>
-                        <span style={{ fontWeight: 800, color: row.color }}>EOD {row.val.toFixed(3)}</span>
+                        <span style={{ color: 'var(--text)' }}>{ax.axisLabel} <span style={{ color: 'var(--text-muted)' }}>· {ax.subgroup}</span></span>
+                        <span style={{ fontWeight: 800, color: 'var(--success)' }}>−{ax.reduction}%</span>
                       </div>
-                      <div style={{ height: 10, background: 'var(--surface-2)', borderRadius: 5, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(row.val / 0.36 * 100, 100)}%`, background: row.color, borderRadius: 5, transition: 'width 1s ease' }} />
+                      <div style={{ position: 'relative', height: 8, background: 'var(--surface-2)', borderRadius: 5, overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', inset: 0, width: `${Math.min(ax.baseline / 0.7 * 100, 100)}%`, background: 'var(--danger)', opacity: 0.28 }} />
+                        <div style={{ position: 'absolute', inset: 0, width: `${Math.min(ax.enhanced / 0.7 * 100, 100)}%`, background: 'var(--success)', borderRadius: 5 }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                        <span>baseline {ax.baseline.toFixed(3)}</span>
+                        <span>deployed {ax.enhanced.toFixed(3)}</span>
                       </div>
                     </div>
                   ))}
 
-                  <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-                    The hybrid framework (intersectional sampling + reweighting + cGAN augmentation) lowered EOD from
-                    <strong> {eodBase.toFixed(3)}</strong> to <strong>{eodEnh.toFixed(3)}</strong> for this subgroup — meaning the
-                    true-positive rate for {eodLabel.toLowerCase()} is now far closer to that of the best-served group.
-                    {eodEnh <= 0.10
-                      ? ' This meets the fairness target (EOD ≤ 0.10).'
-                      : ' This is approaching the fairness target (EOD ≤ 0.10).'}
+                  <div style={{ marginTop: 6, padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
+                    The hybrid framework (stratified sampling + reweighting + cGAN augmentation) equalises melanoma detection across age, sex and lesion location — the largest gains are in age-group and sex fairness.
                   </div>
                 </Card>
               </div>
@@ -852,35 +848,25 @@ const DoctorAppointments = () => {
    DOCTOR ANALYTICS
 ════════════════════════════════════════ */
 const DoctorAnalytics = () => {
-  const { accuracyBySkinType, eodBySkinType, accuracyByAge, accuracyBySex, dxDistribution } = ANALYTICS_DATA;
+  const { eodByAxis, melTprByAge, melTprBySex, melTprByLoc, dxDistribution } = ANALYTICS_DATA;
   const { data: liveA, online } = useLive(
     () => apiFetch('/api/doctor/analytics-live'),
     () => LiveSim.analytics(),
     4000
   );
 
-  const ityColor = (d, i) => {
-    const colors = ['#F2D7CB','#E8B99E','#D4956A','#B06A38','#7D3F18','#4A1E08'];
-    return colors[i] || 'var(--primary)';
-  };
-  const eodColor = (d) => {
-    if (d.value > 0.15) return 'var(--danger)';
-    if (d.value > 0.08) return 'var(--warning)';
-    return 'var(--success)';
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="Analytics & Fairness Metrics" subtitle="HAM10000 · Enhanced v2 (Hybrid) · live bias audit"
+      <TopBar title="Analytics & Fairness Metrics" subtitle="HAM10000 · Model E (Full Framework, deployed) · live bias audit"
         actions={<LiveBadge online={online} />} />
       <PageContent>
-        {/* Key metrics — live */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+        {/* Key metrics — live, real deployed-model numbers */}
+        <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
           {[
-            { icon:'shield',     label:'Overall Accuracy',      value:<AnimatedNumber value={(liveA?.overallAccuracy ?? 0.863) * 100} decimals={1} suffix="%" />, sub:'Deployed model',          variant:'success' },
-            { icon:'trendingUp', label:'Mean EOD',              value:<AnimatedNumber value={liveA?.meanEOD ?? 0.071} decimals={3} />,                              sub:'Lower is fairer',         variant:'success' },
-            { icon:'activity',   label:'Demographic Parity',    value:<AnimatedNumber value={liveA?.demographicParity ?? 0.83} decimals={2} />,                     sub:'Target: ≥ 0.80',          variant:'success' },
-            { icon:'layers',     label:'Images Evaluated',      value:<AnimatedNumber value={liveA?.imagesEvaluated ?? 1503} />,                                    sub:'Updating in real time',   variant:'info'    },
+            { icon:'shield',     label:'Overall Accuracy',   value:<AnimatedNumber value={(liveA?.overallAccuracy ?? 0.7327) * 100} decimals={1} suffix="%" />, sub:'Deployed model (E)',    variant:'info'    },
+            { icon:'activity',   label:'Macro AUC',          value:<AnimatedNumber value={liveA?.macroAuc ?? 0.9276} decimals={3} />,                            sub:'Discrimination',        variant:'success' },
+            { icon:'trendingUp', label:'Mean EOD',           value:<AnimatedNumber value={liveA?.meanEOD ?? 0.130} decimals={3} />,                              sub:'age · sex · location',  variant:'success' },
+            { icon:'layers',     label:'Images Evaluated',   value:<AnimatedNumber value={liveA?.imagesEvaluated ?? 1503} />,                                    sub:'Updating in real time', variant:'info'    },
           ].map(m => (
             <Card key={m.label} style={{ flex: 1, minWidth: 160 }}>
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -897,43 +883,48 @@ const DoctorAnalytics = () => {
           ))}
         </div>
 
+        {/* Trade-off callout */}
+        <Card style={{ marginBottom: 20, borderColor: 'var(--info)', background: 'var(--info-bg)' }}>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Icon name="info" size={18} style={{ color: 'var(--info)', flexShrink: 0, marginTop: 1 }} />
+            <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
+              <strong>Fairness–accuracy trade-off.</strong> The Full Framework reduces mean Equal Opportunity Difference by
+              <strong> 65%</strong> (0.368 → 0.130) versus the baseline — age-group EOD falls 91% and sex EOD 85% — while overall
+              accuracy moves from 86.0% to 73.3%. The deployed model is chosen for equitable melanoma detection across demographic groups.
+            </div>
+          </div>
+        </Card>
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-          {/* Accuracy by Skin Type */}
+          {/* EOD by axis — baseline vs deployed */}
           <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Model Accuracy by Skin Type (ITA)</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Significant disparity observed for Types V–VI</div>
-            <BarChart data={accuracyBySkinType} height={200} colorFn={ityColor} />
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Equal Opportunity Difference by Protected Axis</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Lower is fairer · baseline (Model A) vs deployed (Model E)</div>
+            <GroupedBarChart data={eodByAxis} height={210} max={0.7} />
           </Card>
 
-          {/* EOD by Skin Type */}
+          {/* Melanoma TPR by age */}
           <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Equal Opportunity Difference by Skin Type</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Lower is fairer · Red = fairness violation</div>
-            <BarChart data={eodBySkinType} height={200} colorFn={(d) => eodColor(d)} />
-            <div style={{ display: 'flex', gap: 12, marginTop: 14, fontSize: 11 }}>
-              {[['var(--success)','EOD ≤ 0.08 (Fair)'],['var(--warning)','0.08–0.15 (Moderate)'],['var(--danger)','> 0.15 (Biased)']].map(([c,l]) => (
-                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
-                  <span style={{ color: 'var(--text-muted)' }}>{l}</span>
-                </div>
-              ))}
-            </div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Melanoma Sensitivity by Age Group</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>True-positive rate equalises across groups (Pediatric had no test positives)</div>
+            <GroupedBarChart data={melTprByAge} height={210} max={0.75} asPercent decimals={2} />
           </Card>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-          {/* Accuracy by age */}
+          {/* Melanoma TPR by sex + location stacked in one card */}
           <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Model Accuracy by Age Group</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Pediatric patients (0–17) show lowest accuracy</div>
-            <BarChart data={accuracyByAge} height={180} colorFn={() => 'var(--secondary)'} />
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Melanoma Sensitivity by Sex</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Gap narrows from 8.4 to 1.3 points</div>
+            <GroupedBarChart data={melTprBySex} height={180} max={0.6} asPercent decimals={2} />
           </Card>
 
           {/* DX distribution */}
           <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>HAM10000 Class Distribution</div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>HAM10000 Class Distribution</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>10,015 dermoscopic images — severe class imbalance</div>
             {dxDistribution.map(d => (
-              <div key={d.label} style={{ marginBottom: 10 }}>
+              <div key={d.label} style={{ marginBottom: 9 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
                   <span style={{ color: 'var(--text)' }}>{d.label}</span>
                   <span style={{ fontWeight: 600 }}>{d.value.toLocaleString()} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({(d.pct * 100).toFixed(1)}%)</span></span>
@@ -1023,7 +1014,7 @@ const DoctorModelPerformance = () => {
             </div>
             <div style={{ display: 'flex', gap: 22, textAlign: 'center' }}>
               {[
-                ['Accuracy', `${(best.accuracy * 100).toFixed(1)}%`, 'var(--success)'],
+                ['Accuracy', `${(best.accuracy * 100).toFixed(1)}%`, 'var(--text)'],
                 ['Mean EOD', best.meanEOD.toFixed(3), 'var(--success)'],
                 ['Bias ↓ vs baseline', `${biasReduction(best)}%`, 'var(--primary)'],
               ].map(([k, v, c]) => (
@@ -1058,30 +1049,31 @@ const DoctorModelPerformance = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)' }}>
-                  {['Model','Mitigation Strategy','Accuracy','Macro-F1','Mean EOD','Worst EOD','Dem. Parity','Bias ↓'].map(h => (
-                    <th key={h} style={{ padding: '11px 16px', textAlign: h === 'Model' || h === 'Mitigation Strategy' ? 'left' : 'center', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['Model','Mitigation Strategy','Accuracy','AUC','Mel. Sens.','EOD age','EOD sex','EOD loc','Bias ↓'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: h === 'Model' || h === 'Mitigation Strategy' ? 'left' : 'center', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {list.map(m => (
                   <tr key={m.key} style={{ borderTop: '1px solid var(--border)', background: m.isBest ? 'var(--primary-light)' : 'transparent' }}>
-                    <td style={{ padding: '13px 16px' }}>
+                    <td style={{ padding: '13px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{m.name}</span>
-                        {m.isBest && <span style={{ fontSize: 9, background: 'var(--primary)', color: '#fff', borderRadius: 999, padding: '2px 7px', fontWeight: 800 }}>BEST</span>}
+                        {m.isBest && <span style={{ fontSize: 9, background: 'var(--primary)', color: '#fff', borderRadius: 999, padding: '2px 7px', fontWeight: 800 }}>DEPLOYED</span>}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.arch}</div>
                     </td>
-                    <td style={{ padding: '13px 16px', fontSize: 12, color: 'var(--text)' }}>{m.mitigation}</td>
-                    <td style={{ padding: '13px 16px', textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{(m.accuracy * 100).toFixed(1)}%</td>
-                    <td style={{ padding: '13px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>{m.macroF1.toFixed(3)}</td>
-                    <td style={{ padding: '13px 16px', textAlign: 'center' }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: m.meanEOD <= 0.08 ? 'var(--success)' : m.meanEOD <= 0.15 ? 'var(--warning)' : 'var(--danger)' }}>{m.meanEOD.toFixed(3)}</span>
-                    </td>
-                    <td style={{ padding: '13px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>{m.worstEOD.toFixed(2)}</td>
-                    <td style={{ padding: '13px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>{m.demographicParity.toFixed(2)}</td>
-                    <td style={{ padding: '13px 16px', textAlign: 'center' }}>
+                    <td style={{ padding: '13px 14px', fontSize: 12, color: 'var(--text)' }}>{m.mitigation}</td>
+                    <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{(m.accuracy * 100).toFixed(1)}%</td>
+                    <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>{m.auc.toFixed(3)}</td>
+                    <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>{(m.melSensitivity * 100).toFixed(0)}%</td>
+                    {['eodAge','eodSex','eodLoc'].map(k => (
+                      <td key={k} style={{ padding: '13px 14px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: m[k] <= 0.08 ? 'var(--success)' : m[k] <= 0.20 ? 'var(--warning)' : 'var(--danger)' }}>{m[k].toFixed(3)}</span>
+                      </td>
+                    ))}
+                    <td style={{ padding: '13px 14px', textAlign: 'center' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: biasReduction(m) > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
                         {m.key === baseline.key ? '—' : `${biasReduction(m)}%`}
                       </span>
@@ -1092,8 +1084,8 @@ const DoctorModelPerformance = () => {
             </table>
           </div>
           <div style={{ padding: '12px 20px', fontSize: 11, color: 'var(--text-light)', borderTop: '1px solid var(--border)' }}>
-            EOD = Equal Opportunity Difference (max TPR gap across demographic subgroups). Bias ↓ = relative EOD reduction vs the baseline model.
-            {!online && ' · Showing reference values — connect the Flask backend (/api/models/comparison) for live Phase-1 results.'}
+            EOD = Equal Opportunity Difference (max melanoma-TPR gap across subgroups on that axis; lower is fairer). Bias ↓ = mean-EOD reduction vs Model A. Model E is deployed for equitable detection despite lower raw accuracy.
+            {!online && ' · Reference values from Phase-1 results — connect the Flask backend (/api/models/comparison) for live figures.'}
           </div>
         </Card>
       </PageContent>
