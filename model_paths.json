@@ -1,7 +1,0 @@
-{
-  "baseline": "/kaggle/working/phase3_outputs/models/Model_A_Standard_Baseline_final.h5",
-  "sampling_only": "/kaggle/working/phase3_outputs/models/Model_B_Sampling_Only_final.h5",
-  "reweight_only": "/kaggle/working/phase3_outputs/models/Model_C_Reweighting_Only_final.h5",
-  "cgan_only": "/kaggle/working/phase3_outputs/models/Model_D_cGAN_Only_final.h5",
-  "enhanced_v2": "/kaggle/working/phase3_outputs/models/Model_E_Full_Framework_final.h5"
-}
