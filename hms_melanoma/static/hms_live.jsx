@@ -228,6 +228,83 @@ const LiveSim = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════════
+   CLINIC STORE  — single source of truth for the doctor portal
+   ──────────────────────────────────────────────────────────
+   Grounds the Dashboard, Patients page and Recent-Analyses feed
+   in ONE dataset (the demo PATIENTS / APPOINTMENTS / DETECTIONS)
+   so every count agrees, and updates live whenever an analysis is
+   completed via recordAnalysis(). Independent of the backend, so
+   the numbers stay consistent whether Flask is running or not.
+═══════════════════════════════════════════════════════════ */
+const ClinicStore = (function () {
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const patients = PATIENTS.map(p => ({ ...p }));       // mutable working copies
+  const appointments = APPOINTMENTS.map(a => ({ ...a }));
+  // Seed the analyses feed from historical DETECTIONS (so it's never empty)
+  let analyses = DETECTIONS.map(d => {
+    const pt = PATIENTS.find(p => p.id === d.patientId);
+    return {
+      id: d.id, patientId: d.patientId, patientName: pt ? pt.name : 'Unknown',
+      dx: d.dx, dxLabel: d.dxLabel, confidence: d.confidence,
+      riskLevel: d.riskLevel, date: d.date, live: false, _ts: Date.parse(d.date) || 0,
+    };
+  });
+
+  const subs = new Set();
+  const emit = () => subs.forEach(fn => fn());
+
+  return {
+    patients() { return patients; },
+    appointments() { return appointments; },
+
+    dashboard() {
+      const today = todayISO();
+      return {
+        totalPatients: patients.length,
+        analysesToday: analyses.filter(a => a.date === today).length,
+        highRiskCount: patients.filter(p => p.riskLevel === 'high').length,
+        upcomingCount: appointments.filter(a => a.status === 'scheduled').length,
+        recentChecks: analyses.slice().sort((a, b) => (b._ts || 0) - (a._ts || 0)).slice(0, 6),
+      };
+    },
+
+    highRiskPatients() { return patients.filter(p => p.riskLevel === 'high'); },
+
+    /* Called when a melanoma analysis completes (doctor OR patient portal) */
+    recordAnalysis({ patientId, patientName, dx, dxLabel, confidence, riskLevel }) {
+      const patient = patients.find(p => p.id === patientId);
+      analyses.unshift({
+        id: 'L' + Date.now(),
+        patientId,
+        patientName: patientName || (patient ? patient.name : 'Unknown'),
+        dx, dxLabel, confidence,
+        riskLevel: riskLevel === 'moderate' ? 'medium' : riskLevel,
+        date: todayISO(), live: true, _ts: Date.now(),
+      });
+      if (patient) {
+        patient.lastVisit = todayISO();
+        if (riskLevel === 'high') patient.riskLevel = 'high';
+      }
+      emit();
+    },
+
+    subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
+  };
+})();
+
+/* useClinic — subscribe a component to live ClinicStore updates */
+function useClinic() {
+  const [snap, setSnap] = useStateLive(() => ClinicStore.dashboard());
+  useEffectLive(() => {
+    const fn = () => setSnap(ClinicStore.dashboard());
+    fn();
+    const unsub = ClinicStore.subscribe(fn);
+    return unsub;
+  }, []);
+  return snap;
+}
+
+/* ═══════════════════════════════════════════════════════════
    useLive — poll real API, fall back to LiveSim
 ═══════════════════════════════════════════════════════════ */
 function useLive(fetcher, fallbackGetter, interval = 3000) {
@@ -369,7 +446,7 @@ function simulatePrediction(patient, localization) {
 
 Object.assign(window, {
   MODEL_REGISTRY, EOD_BY_AXIS, eodForPatient, ageGroupOf, locZoneOf, AGE_GROUP_LABEL,
-  ModelsApi, LiveSim, useLive, useSim, AnimatedNumber, LiveBadge,
+  ModelsApi, LiveSim, ClinicStore, useClinic, useLive, useSim, AnimatedNumber, LiveBadge,
   simulatePrediction,
 });
 

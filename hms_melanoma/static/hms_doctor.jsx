@@ -5,12 +5,14 @@ const { useState, useRef, useEffect } = React;
    DOCTOR DASHBOARD
 ════════════════════════════════════════ */
 const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
-  const { data: live, online } = useLive(() => DoctorApi.dashboard(), () => LiveSim.doctorDashboard(), 4000);
-  const upcomingApts = APPOINTMENTS.filter(a => a.status === 'scheduled').slice(0, 3);
-  const recentDetections = (live?.recentChecks || []).slice(0, 6);
-  const totalPatients = live?.totalPatients ?? PATIENTS.length;
-  const analysesToday = live?.checksToday ?? 0;
-  const highRiskCount = live?.highRiskCount ?? 0;
+  const clinic = useClinic();
+  const online = MessageStore.isOnline();
+  const upcomingApts = ClinicStore.appointments().filter(a => a.status === 'scheduled').slice(0, 3);
+  const recentDetections = (clinic.recentChecks || []).slice(0, 6);
+  const totalPatients = clinic.totalPatients;
+  const analysesToday = clinic.analysesToday;
+  const highRiskCount = clinic.highRiskCount;
+  const upcomingCount = clinic.upcomingCount;
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
@@ -22,7 +24,7 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
         <div style={{ background: 'linear-gradient(120deg, var(--primary) 0%, var(--primary-dark) 100%)', borderRadius: 'var(--radius-lg)', padding: '22px 28px', color: '#fff', marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Good morning, Dr. Ramaneiss 👋</div>
-            <div style={{ fontSize: 14, opacity: 0.85 }}>You have {upcomingApts.length} appointments today and {highRiskCount} high-risk case{highRiskCount === 1 ? '' : 's'} to review.</div>
+            <div style={{ fontSize: 14, opacity: 0.85 }}>You have {upcomingCount} appointment{upcomingCount === 1 ? '' : 's'} scheduled and {highRiskCount} high-risk case{highRiskCount === 1 ? '' : 's'} to review.</div>
           </div>
           <div style={{ opacity: 0.18, fontSize: 72 }}>🔬</div>
         </div>
@@ -31,7 +33,7 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
         <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
           <StatCard icon="users"         label="Total Patients"  value={<AnimatedNumber value={totalPatients} />} sub="Under your care" trend={12} />
           <StatCard icon="scan"          label="Analyses Today"  value={<AnimatedNumber value={analysesToday} />} sub="Updating in real time" />
-          <StatCard icon="calendar"      label="Upcoming Appts"  value={upcomingApts.length} sub="Next: 09:00 today" />
+          <StatCard icon="calendar"      label="Upcoming Appts"  value={<AnimatedNumber value={upcomingCount} />} sub="Next: 09:00 today" />
           <StatCard icon="alertTriangle" label="High-Risk Cases" value={<AnimatedNumber value={highRiskCount} />} sub="Requires immediate action" iconColor="var(--danger)" />
         </div>
 
@@ -105,7 +107,7 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
             </Card>
 
             {/* High risk alert */}
-            {(() => { const highRisk = PATIENTS.filter(p => p.riskLevel === 'high'); return highRisk.length > 0 && (
+            {(() => { const highRisk = ClinicStore.highRiskPatients(); return highRisk.length > 0 && (
               <Card style={{ borderColor: 'var(--danger)', background: 'var(--danger-bg)' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                   <Icon name="alertTriangle" size={18} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 1 }} />
@@ -134,8 +136,9 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
 const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }) => {
   const [search, setSearch] = useState('');
   const [filterRisk, setFilterRisk] = useState('all');
+  const clinic = useClinic();  // re-render when analyses update patient risk
 
-  const filtered = PATIENTS.filter(p => {
+  const filtered = ClinicStore.patients().filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.diagnosis.includes(search.toLowerCase());
     const matchRisk = filterRisk === 'all' || p.riskLevel === filterRisk;
     return matchSearch && matchRisk;
@@ -145,7 +148,7 @@ const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="Patient Management" subtitle={`${filtered.length} of ${PATIENTS.length} patients`} />
+      <TopBar title="Patient Management" subtitle={`${filtered.length} of ${ClinicStore.patients().length} patients`} />
       <PageContent>
         {/* Filters */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
@@ -294,9 +297,14 @@ const DoctorDetection = ({ detectionPatientId }) => {
       }
 
       setTimeout(() => {
-        setResultE(mapResult(data.enhanced));
+        const rE = mapResult(data.enhanced);
+        setResultE(rE);
         setResultB(runCompare ? mapResult(data.baseline) : null);
         setStep('result');
+        ClinicStore.recordAnalysis({
+          patientId: selectedPid, patientName: patient?.name,
+          dx: rE.dx, dxLabel: rE.dxLabel, confidence: rE.confidence, riskLevel: rE.riskLevel,
+        });
       }, 300);
 
     } catch (err) {
@@ -305,7 +313,14 @@ const DoctorDetection = ({ detectionPatientId }) => {
       // whenever the backend is reachable.
       clearInterval(iv); setProgress(100);
       const sim = simulatePrediction(patient, localization);
-      setTimeout(() => { setResultE(mapResult(sim)); setResultB(null); setStep('result'); }, 300);
+      setTimeout(() => {
+        const rE = mapResult(sim);
+        setResultE(rE); setResultB(null); setStep('result');
+        ClinicStore.recordAnalysis({
+          patientId: selectedPid, patientName: patient?.name,
+          dx: rE.dx, dxLabel: rE.dxLabel, confidence: rE.confidence, riskLevel: rE.riskLevel,
+        });
+      }, 300);
     }
   };
 

@@ -252,6 +252,13 @@ const PatientDetection = () => {
 
     const iv = setInterval(() => setProgress(p => Math.min(p + 2, 88)), 120);
 
+    const recordPatientAnalysis = (r) => {
+      if (typeof ClinicStore !== 'undefined') ClinicStore.recordAnalysis({
+        patientId: pt.id, patientName: pt.name,
+        dx: r.dx, dxLabel: r.dxLabel, confidence: r.confidence, riskLevel: r.riskLevel,
+      });
+    };
+
     const RECO = {
       mel:   'Immediate excisional biopsy recommended. Urgent referral to surgical oncology.',
       bcc:   'Surgical excision recommended. Consult with your dermatologist.',
@@ -282,12 +289,12 @@ const PatientDetection = () => {
     try {
       const data = await PatientApi.melanomaCheck(fileObj, localization);
       clearInterval(iv); setProgress(100);
-      setTimeout(() => { setResult(mapData(data)); setStep('result'); }, 300);
+      setTimeout(() => { const r = mapData(data); setResult(r); setStep('result'); recordPatientAnalysis(r); }, 300);
     } catch (err) {
       // Backend unreachable — show a simulated result so the demo still works offline.
       clearInterval(iv); setProgress(100);
       const sim = simulatePrediction(pt, localization);
-      setTimeout(() => { setResult(mapData(sim)); setStep('result'); }, 300);
+      setTimeout(() => { const r = mapData(sim); setResult(r); setStep('result'); recordPatientAnalysis(r); }, 300);
     }
   };
 
