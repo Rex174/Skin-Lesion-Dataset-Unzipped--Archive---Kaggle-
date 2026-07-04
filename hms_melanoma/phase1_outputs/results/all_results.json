@@ -1,0 +1,377 @@
+{
+  "Model_A_Standard_Baseline": {
+    "standard_metrics": {
+      "accuracy": 0.8596,
+      "auc_macro": 0.9836,
+      "sensitivity": 0.7648,
+      "specificity": 0.9565,
+      "per_class_sensitivity": {
+        "akiec": 0.9375,
+        "bcc": 0.8667,
+        "bkl": 0.5062,
+        "df": 0.6667,
+        "mel": 0.4578,
+        "nv": 0.9809,
+        "vasc": 0.9375
+      },
+      "per_class_specificity": {
+        "akiec": 0.9727,
+        "bcc": 0.9793,
+        "bkl": 0.9909,
+        "df": 0.9993,
+        "mel": 0.9916,
+        "nv": 0.7625,
+        "vasc": 0.9993
+      }
+    },
+    "ece": 0.0192,
+    "fairness": {
+      "age_group": {
+        "EOD": 0.3404,
+        "DP": 0.1045,
+        "TPR_per_group": {
+          "MiddleAged": 0.3519,
+          "Pediatric": NaN,
+          "Elderly": 0.4848,
+          "YoungAdult": 0.6923
+        },
+        "PPR_per_group": {
+          "MiddleAged": 0.033,
+          "Pediatric": 0.0,
+          "Elderly": 0.1045,
+          "YoungAdult": 0.0375
+        }
+      },
+      "sex": {
+        "EOD": 0.084,
+        "DP": 0.0319,
+        "TPR_per_group": {
+          "female": 0.4062,
+          "male": 0.4902
+        },
+        "PPR_per_group": {
+          "female": 0.0417,
+          "male": 0.0736
+        }
+      },
+      "loc_zone": {
+        "EOD": 0.68,
+        "DP": 0.0773,
+        "TPR_per_group": {
+          "Trunk": 0.4533,
+          "UpperExtremity": 0.5938,
+          "LowerExtremity": 0.4242,
+          "Head": 0.32,
+          "Unknown": 1.0
+        },
+        "PPR_per_group": {
+          "Trunk": 0.0528,
+          "UpperExtremity": 0.1173,
+          "LowerExtremity": 0.042,
+          "Head": 0.0641,
+          "Unknown": 0.04
+        }
+      }
+    }
+  },
+  "Model_B_Sampling_Only": {
+    "standard_metrics": {
+      "accuracy": 0.7917,
+      "auc_macro": 0.9475,
+      "sensitivity": 0.5865,
+      "specificity": 0.9376,
+      "per_class_sensitivity": {
+        "akiec": 0.625,
+        "bcc": 0.72,
+        "bkl": 0.4,
+        "df": 0.2,
+        "mel": 0.259,
+        "nv": 0.9638,
+        "vasc": 0.9375
+      },
+      "per_class_specificity": {
+        "akiec": 0.9621,
+        "bcc": 0.9707,
+        "bkl": 0.9772,
+        "df": 0.9966,
+        "mel": 0.987,
+        "nv": 0.6708,
+        "vasc": 0.9986
+      }
+    },
+    "ece": 0.0585,
+    "fairness": {
+      "age_group": {
+        "EOD": 0.0318,
+        "DP": 0.069,
+        "TPR_per_group": {
+          "MiddleAged": 0.2593,
+          "Pediatric": NaN,
+          "Elderly": 0.2626,
+          "YoungAdult": 0.2308
+        },
+        "PPR_per_group": {
+          "MiddleAged": 0.03,
+          "Pediatric": 0.0,
+          "Elderly": 0.069,
+          "YoungAdult": 0.0125
+        }
+      },
+      "sex": {
+        "EOD": 0.0361,
+        "DP": 0.0037,
+        "TPR_per_group": {
+          "female": 0.2812,
+          "male": 0.2451
+        },
+        "PPR_per_group": {
+          "female": 0.0387,
+          "male": 0.0424
+        }
+      },
+      "loc_zone": {
+        "EOD": 0.3438,
+        "DP": 0.0782,
+        "TPR_per_group": {
+          "Trunk": 0.3067,
+          "UpperExtremity": 0.3438,
+          "LowerExtremity": 0.2121,
+          "Head": 0.08,
+          "Unknown": 0.0
+        },
+        "PPR_per_group": {
+          "Trunk": 0.0423,
+          "UpperExtremity": 0.0782,
+          "LowerExtremity": 0.0308,
+          "Head": 0.0192,
+          "Unknown": 0.0
+        }
+      }
+    }
+  },
+  "Model_C_Reweighting_Only": {
+    "standard_metrics": {
+      "accuracy": 0.6411,
+      "auc_macro": 0.8803,
+      "sensitivity": 0.5736,
+      "specificity": 0.9313,
+      "per_class_sensitivity": {
+        "akiec": 0.375,
+        "bcc": 0.6533,
+        "bkl": 0.3312,
+        "df": 0.6,
+        "mel": 0.3012,
+        "nv": 0.7545,
+        "vasc": 1.0
+      },
+      "per_class_specificity": {
+        "akiec": 0.9502,
+        "bcc": 0.9056,
+        "bkl": 0.9498,
+        "df": 0.9561,
+        "mel": 0.9534,
+        "nv": 0.8458,
+        "vasc": 0.9582
+      }
+    },
+    "ece": 0.0937,
+    "fairness": {
+      "age_group": {
+        "EOD": 0.0505,
+        "DP": 0.0322,
+        "TPR_per_group": {
+          "MiddleAged": 0.3333,
+          "Pediatric": NaN,
+          "Elderly": 0.2828,
+          "YoungAdult": 0.3077
+        },
+        "PPR_per_group": {
+          "MiddleAged": 0.0616,
+          "Pediatric": 0.0938,
+          "Elderly": 0.0858,
+          "YoungAdult": 0.0875
+        }
+      },
+      "sex": {
+        "EOD": 0.1201,
+        "DP": 0.0175,
+        "TPR_per_group": {
+          "female": 0.375,
+          "male": 0.2549
+        },
+        "PPR_per_group": {
+          "female": 0.0848,
+          "male": 0.0673
+        }
+      },
+      "loc_zone": {
+        "EOD": 0.3939,
+        "DP": 0.0758,
+        "TPR_per_group": {
+          "Trunk": 0.32,
+          "UpperExtremity": 0.3438,
+          "LowerExtremity": 0.3939,
+          "Head": 0.08,
+          "Unknown": 0.0
+        },
+        "PPR_per_group": {
+          "Trunk": 0.0793,
+          "UpperExtremity": 0.095,
+          "LowerExtremity": 0.084,
+          "Head": 0.0192,
+          "Unknown": 0.04
+        }
+      }
+    }
+  },
+  "Model_D_cGAN_Only": {
+    "standard_metrics": {
+      "accuracy": 0.8046,
+      "auc_macro": 0.9535,
+      "sensitivity": 0.6371,
+      "specificity": 0.9386,
+      "per_class_sensitivity": {
+        "akiec": 0.6667,
+        "bcc": 0.7733,
+        "bkl": 0.3562,
+        "df": 0.4667,
+        "mel": 0.2831,
+        "nv": 0.9759,
+        "vasc": 0.9375
+      },
+      "per_class_specificity": {
+        "akiec": 0.9649,
+        "bcc": 0.9714,
+        "bkl": 0.9886,
+        "df": 0.9979,
+        "mel": 0.9893,
+        "nv": 0.6604,
+        "vasc": 0.9979
+      }
+    },
+    "ece": 0.0634,
+    "fairness": {
+      "age_group": {
+        "EOD": 0.0484,
+        "DP": 0.0728,
+        "TPR_per_group": {
+          "MiddleAged": 0.2593,
+          "Pediatric": NaN,
+          "Elderly": 0.2929,
+          "YoungAdult": 0.3077
+        },
+        "PPR_per_group": {
+          "MiddleAged": 0.027,
+          "Pediatric": 0.0,
+          "Elderly": 0.0728,
+          "YoungAdult": 0.0167
+        }
+      },
+      "sex": {
+        "EOD": 0.0285,
+        "DP": 0.0132,
+        "TPR_per_group": {
+          "female": 0.2656,
+          "male": 0.2941
+        },
+        "PPR_per_group": {
+          "female": 0.0342,
+          "male": 0.0474
+        }
+      },
+      "loc_zone": {
+        "EOD": 0.4062,
+        "DP": 0.0894,
+        "TPR_per_group": {
+          "Trunk": 0.2933,
+          "UpperExtremity": 0.4062,
+          "LowerExtremity": 0.2424,
+          "Head": 0.16,
+          "Unknown": 0.0
+        },
+        "PPR_per_group": {
+          "Trunk": 0.037,
+          "UpperExtremity": 0.0894,
+          "LowerExtremity": 0.0308,
+          "Head": 0.0385,
+          "Unknown": 0.0
+        }
+      }
+    }
+  },
+  "Model_E_Full_Framework": {
+    "standard_metrics": {
+      "accuracy": 0.7327,
+      "auc_macro": 0.9276,
+      "sensitivity": 0.6081,
+      "specificity": 0.9396,
+      "per_class_sensitivity": {
+        "akiec": 0.75,
+        "bcc": 0.56,
+        "bkl": 0.3812,
+        "df": 0.4,
+        "mel": 0.2892,
+        "nv": 0.8763,
+        "vasc": 1.0
+      },
+      "per_class_specificity": {
+        "akiec": 0.9151,
+        "bcc": 0.9635,
+        "bkl": 0.9635,
+        "df": 0.9842,
+        "mel": 0.9694,
+        "nv": 0.7875,
+        "vasc": 0.9938
+      }
+    },
+    "ece": 0.0543,
+    "fairness": {
+      "age_group": {
+        "EOD": 0.0299,
+        "DP": 0.0658,
+        "TPR_per_group": {
+          "MiddleAged": 0.2778,
+          "Pediatric": NaN,
+          "Elderly": 0.2929,
+          "YoungAdult": 0.3077
+        },
+        "PPR_per_group": {
+          "MiddleAged": 0.0405,
+          "Pediatric": 0.0312,
+          "Elderly": 0.097,
+          "YoungAdult": 0.0333
+        }
+      },
+      "sex": {
+        "EOD": 0.0129,
+        "DP": 0.0058,
+        "TPR_per_group": {
+          "female": 0.2812,
+          "male": 0.2941
+        },
+        "PPR_per_group": {
+          "female": 0.0565,
+          "male": 0.0623
+        }
+      },
+      "loc_zone": {
+        "EOD": 0.3467,
+        "DP": 0.0894,
+        "TPR_per_group": {
+          "Trunk": 0.3467,
+          "UpperExtremity": 0.3438,
+          "LowerExtremity": 0.1818,
+          "Head": 0.2,
+          "Unknown": 0.0
+        },
+        "PPR_per_group": {
+          "Trunk": 0.0661,
+          "UpperExtremity": 0.0894,
+          "LowerExtremity": 0.0308,
+          "Head": 0.0705,
+          "Unknown": 0.0
+        }
+      }
+    }
+  }
+}
