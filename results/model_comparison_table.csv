@@ -1,4 +1,0 @@
-Model,Accuracy,AUC (macro),Sensitivity,Specificity,ECE,EOD (age_group),DP (age_group),EOD (sex),DP (sex),EOD (loc_zone),DP (loc_zone)
-Model A Baseline,0.0882,0.5635,0.1651,0.8604,0.0872,0.2052,0.2063,0.0882,0.0564,0.6267,0.1358
-Model B Enhanced v1,0.0326,0.6003,0.1429,0.8571,0.2315,0.0,0.0,0.0,0.0,0.0,0.0
-Model C Enhanced v2,0.1085,0.5954,0.1421,0.8569,0.1048,0.0,0.0,0.0,0.0,0.0,0.0
