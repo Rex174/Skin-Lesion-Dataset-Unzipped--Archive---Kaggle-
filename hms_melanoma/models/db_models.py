@@ -62,6 +62,16 @@ class Patient(db.Model):
     sex                 = db.Column(db.String(10),  nullable=False)   # "male" | "female"
     contact_number      = db.Column(db.String(20))
     address             = db.Column(db.Text)
+    email               = db.Column(db.String(120))
+    # Clinical / demographic profile shown in the HMS UI (nullable so older
+    # databases keep working; populated by the seed and profile edits).
+    skin_type           = db.Column(db.String(6))     # Fitzpatrick I–VI
+    ita                 = db.Column(db.Integer)        # Individual Typology Angle (°)
+    localization        = db.Column(db.String(40))     # primary lesion site
+    blood_type          = db.Column(db.String(6))
+    allergies           = db.Column(db.String(200))
+    known_diagnosis     = db.Column(db.String(20))     # dx code, e.g. "mel"
+    clinical_notes      = db.Column(db.Text)
     assigned_doctor_id  = db.Column(db.Integer, db.ForeignKey("doctors.id"), nullable=True)
     created_at          = db.Column(db.DateTime, default=datetime.utcnow)
 
