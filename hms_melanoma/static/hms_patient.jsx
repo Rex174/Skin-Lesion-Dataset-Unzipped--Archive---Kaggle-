@@ -7,7 +7,8 @@ const { useState, useRef, useEffect } = React;
 const PatientDashboard = ({ setPage }) => {
   const pt = PATIENT_USER;
   const myDetections  = DETECTIONS.filter(d => d.patientId === pt.id);
-  const myAppointments = APPOINTMENTS.filter(a => a.patientId === pt.id);
+  const apptState = useAppointments('patient');
+  const myAppointments = apptState.list || [];
   const latest  = myDetections[0];
   const nextApt = myAppointments.find(a => a.status === 'scheduled');
   const unread  = NOTIFICATIONS_PATIENT.filter(n => !n.read).length;
@@ -469,15 +470,27 @@ const PatientDetection = () => {
 ════════════════════════════════════════ */
 const PatientAppointments = () => {
   const pt = PATIENT_USER;
-  const myApts = APPOINTMENTS.filter(a => a.patientId === pt.id);
-  const upcoming  = myApts.filter(a => a.status === 'scheduled');
-  const past      = myApts.filter(a => a.status === 'completed');
+  const { list, online, book, changeStatus } = useAppointments('patient');
+  const upcoming  = (list || []).filter(a => a.status === 'scheduled');
+  const past      = (list || []).filter(a => a.status !== 'scheduled');
   const [booking, setBooking] = useState(false);
   const [form, setForm] = useState({ date: '', time: '', reason: '' });
+  const [busy, setBusy] = useState(false);
+
+  const MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const monOf = d => { const m = parseInt((d || '').split('-')[1], 10); return MON[(m || 1) - 1]; };
+  const dayOf = d => (d || '').split('-')[2] || '?';
+
+  const confirmBooking = async () => {
+    if (!form.date || !form.time || !form.reason) return;
+    setBusy(true);
+    await book({ patientId: pt.id, date: form.date, time: form.time, duration: 30, reason: form.reason });
+    setBusy(false); setBooking(false); setForm({ date: '', time: '', reason: '' });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="My Appointments" actions={<Btn icon="plus" onClick={() => setBooking(b => !b)}>{booking ? 'Cancel' : 'Book Appointment'}</Btn>} />
+      <TopBar title="My Appointments" actions={<><LiveBadge online={online} /><Btn icon="plus" onClick={() => setBooking(b => !b)}>{booking ? 'Close' : 'Book Appointment'}</Btn></>} />
       <PageContent>
         {booking && (
           <Card style={{ maxWidth: 500, marginBottom: 24 }}>
@@ -504,7 +517,7 @@ const PatientAppointments = () => {
                 <option>Treatment Review</option>
               </select>
             </div>
-            <Btn icon="check" onClick={() => setBooking(false)} style={{ width: '100%', justifyContent: 'center' }}>Confirm Booking</Btn>
+            <Btn icon="check" onClick={confirmBooking} disabled={busy || !form.date || !form.time || !form.reason} style={{ width: '100%', justifyContent: 'center' }}>{busy ? 'Booking…' : 'Confirm Booking'}</Btn>
           </Card>
         )}
 
@@ -516,14 +529,14 @@ const PatientAppointments = () => {
               upcoming.map(a => (
                 <div key={a.id} style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 14, alignItems: 'center' }}>
                   <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--info-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--info)' }}>{a.date.split('-')[2]}</div>
-                    <div style={{ fontSize: 10, color: 'var(--info)', opacity: 0.8 }}>APR</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--info)' }}>{dayOf(a.date)}</div>
+                    <div style={{ fontSize: 10, color: 'var(--info)', opacity: 0.8 }}>{monOf(a.date)}</div>
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{a.reason}</div>
                     <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Dr. Ramaneiss · {a.time} · {a.duration} min</div>
                   </div>
-                  <StatusBadge status={a.status} />
+                  <Btn variant="danger" size="sm" onClick={() => changeStatus(a, 'cancelled')}>Cancel</Btn>
                 </div>
               ))
             }
@@ -536,8 +549,8 @@ const PatientAppointments = () => {
               past.map(a => (
                 <div key={a.id} style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 14, alignItems: 'center' }}>
                   <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-muted)' }}>{a.date.split('-')[2]}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-light)' }}>APR</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-muted)' }}>{dayOf(a.date)}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-light)' }}>{monOf(a.date)}</div>
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{a.reason}</div>

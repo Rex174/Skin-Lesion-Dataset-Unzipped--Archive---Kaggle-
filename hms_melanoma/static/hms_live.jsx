@@ -257,6 +257,15 @@ const ClinicStore = (function () {
     patients() { return patients; },
     appointments() { return appointments; },
 
+    /* Appointment mutators (offline demo path) */
+    setAppointments(list) { appointments.length = 0; list.forEach(a => appointments.push(a)); emit(); },
+    addAppointmentLocal(a) { appointments.push(a); emit(); },
+    updateAppointmentLocal(id, patch) {
+      const x = appointments.find(z => z.id === id || z.dbId === id);
+      if (x) Object.assign(x, patch);
+      emit();
+    },
+
     dashboard() {
       const today = todayISO();
       return {
@@ -269,6 +278,24 @@ const ClinicStore = (function () {
     },
 
     highRiskPatients() { return patients.filter(p => p.riskLevel === 'high'); },
+
+    /* Recover a demo patient id ('P00x') from a name — lets the live DB list
+       (integer ids) still navigate to the demo-backed record/detection views. */
+    demoIdForName(name) {
+      const p = patients.find(x => x.name === name);
+      return p ? p.id : null;
+    },
+
+    /* Full offline snapshot in the same shape the backend dashboard returns */
+    snapshot() {
+      const d = this.dashboard();
+      return {
+        ...d,
+        patients: patients.slice(),
+        highRiskPatients: patients.filter(p => p.riskLevel === 'high').map(p => ({ id: p.id, name: p.name })),
+        online: false,
+      };
+    },
 
     /* Called when a melanoma analysis completes (doctor OR patient portal) */
     recordAnalysis({ patientId, patientName, dx, dxLabel, confidence, riskLevel }) {
@@ -292,16 +319,121 @@ const ClinicStore = (function () {
   };
 })();
 
-/* useClinic — subscribe a component to live ClinicStore updates */
+/* useClinic — live doctor dashboard + patient list.
+   When the Flask backend is reachable it reads real database records from
+   /api/doctor/dashboard and /api/doctor/patients (so counts, the patient
+   list, recent analyses and high-risk cases all reflect the DB). When the
+   backend is unreachable it falls back to the offline demo cohort so the
+   preview / offline demo still works and stays internally consistent. */
 function useClinic() {
-  const [snap, setSnap] = useStateLive(() => ClinicStore.dashboard());
+  const [snap, setSnap] = useStateLive(() => ClinicStore.snapshot());
   useEffectLive(() => {
-    const fn = () => setSnap(ClinicStore.dashboard());
-    fn();
-    const unsub = ClinicStore.subscribe(fn);
-    return unsub;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const [dashR, patR, apptR] = await Promise.all([
+          apiFetch('/api/doctor/dashboard'),
+          apiFetch('/api/doctor/patients'),
+          apiFetch('/api/appointments'),
+        ]);
+        const d = dashR.data || dashR;
+        const p = patR.data || patR;
+        const appts = apptR.data || apptR;
+        if (!alive) return;
+        setSnap({
+          totalPatients: d.totalPatients,
+          analysesToday: d.checksToday,
+          highRiskCount: d.highRiskCount,
+          highRiskPatients: d.highRiskPatients || [],
+          recentChecks: d.recentChecks || [],
+          upcomingCount: Array.isArray(appts) ? appts.filter(a => a.status === 'scheduled').length : 0,
+          patients: Array.isArray(p) ? p : [],
+          online: true,
+        });
+      } catch (e) {
+        if (alive) setSnap(ClinicStore.snapshot());
+      }
+    };
+    poll();
+    const id = setInterval(poll, 4000);
+    const unsub = ClinicStore.subscribe(poll);
+    return () => { alive = false; clearInterval(id); unsub(); };
   }, []);
   return snap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   APPOINTMENTS  — database-backed when Flask is running, demo
+   fallback offline. AppointmentApi hits the REST endpoints;
+   useAppointments(role) gives a live list + book/reschedule/cancel.
+═══════════════════════════════════════════════════════════ */
+const AppointmentApi = {
+  list:   () => apiFetch('/api/appointments'),
+  book:   (payload) => apiFetch('/api/appointments', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (dbId, payload) => apiFetch('/api/appointments/' + dbId, { method: 'PATCH', body: JSON.stringify(payload) }),
+};
+
+function useAppointments(role) {
+  const offlineList = () => {
+    const all = ClinicStore.appointments();
+    if (role === 'patient') {
+      const pid = (window.PATIENT_USER || {}).id;
+      return all.filter(a => a.patientId === pid);
+    }
+    return all;
+  };
+  const [state, setState] = useStateLive(() => ({ list: offlineList(), online: false }));
+
+  const refresh = React.useCallback(async () => {
+    try {
+      const r = await AppointmentApi.list();
+      const list = r.data || r;
+      setState({ list: Array.isArray(list) ? list : [], online: true });
+    } catch (e) {
+      setState({ list: offlineList(), online: false });
+    }
+    // eslint-disable-next-line
+  }, [role]);
+
+  useEffectLive(() => {
+    refresh();
+    const id = setInterval(refresh, 4000);
+    const unsub = ClinicStore.subscribe(() => setState(s => s.online ? s : { list: offlineList(), online: false }));
+    return () => { clearInterval(id); unsub(); };
+    // eslint-disable-next-line
+  }, [role]);
+
+  /* Actions — write to DB when online, else mutate the demo store */
+  const book = async ({ patientId, date, time, duration, reason }) => {
+    if (state.online) {
+      try { await AppointmentApi.book({ patient_id: patientId, date, time, duration, reason }); await refresh(); return; }
+      catch (e) { /* fall through */ }
+    }
+    ClinicStore.addAppointmentLocal({
+      id: 'APT' + Date.now(), patientId: patientId || (window.PATIENT_USER || {}).id,
+      patientName: (window.PATIENT_USER || {}).name, date, time,
+      duration: duration || 30, reason: reason || 'Consultation', status: 'scheduled',
+    });
+    setState({ list: offlineList(), online: false });
+  };
+  const changeStatus = async (appt, status) => {
+    if (state.online && appt.dbId) {
+      try { await AppointmentApi.update(appt.dbId, { status }); await refresh(); return; }
+      catch (e) { /* fall through */ }
+    }
+    ClinicStore.updateAppointmentLocal(appt.id, { status });
+    setState({ list: offlineList(), online: false });
+  };
+  const reschedule = async (appt, { date, time }) => {
+    if (state.online && appt.dbId) {
+      try { await AppointmentApi.update(appt.dbId, { date, time }); await refresh(); return; }
+      catch (e) { /* fall through */ }
+    }
+    ClinicStore.updateAppointmentLocal(appt.id, { date, time });
+    setState({ list: offlineList(), online: false });
+  };
+
+  return { ...state, refresh, book, changeStatus, reschedule };
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -446,7 +578,7 @@ function simulatePrediction(patient, localization) {
 
 Object.assign(window, {
   MODEL_REGISTRY, EOD_BY_AXIS, eodForPatient, ageGroupOf, locZoneOf, AGE_GROUP_LABEL,
-  ModelsApi, LiveSim, ClinicStore, useClinic, useLive, useSim, AnimatedNumber, LiveBadge,
+  ModelsApi, LiveSim, ClinicStore, useClinic, AppointmentApi, useAppointments, useLive, useSim, AnimatedNumber, LiveBadge,
   simulatePrediction,
 });
 

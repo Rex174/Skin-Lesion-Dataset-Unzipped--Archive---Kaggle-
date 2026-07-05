@@ -6,8 +6,9 @@ const { useState, useRef, useEffect } = React;
 ════════════════════════════════════════ */
 const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
   const clinic = useClinic();
-  const online = MessageStore.isOnline();
-  const upcomingApts = ClinicStore.appointments().filter(a => a.status === 'scheduled').slice(0, 3);
+  const online = clinic.online;
+  const apptState = useAppointments('doctor');
+  const upcomingApts = (apptState.list || []).filter(a => a.status === 'scheduled').slice(0, 3);
   const recentDetections = (clinic.recentChecks || []).slice(0, 6);
   const totalPatients = clinic.totalPatients;
   const analysesToday = clinic.analysesToday;
@@ -62,7 +63,7 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
                   const name = d.patientName || pt?.name || 'Unknown';
                   return (
                     <tr key={d.id} className={d.live ? 'hms-row-new' : ''}
-                      onClick={() => { setSelectedPatientId(d.patientId); setPage('record'); }}
+                      onClick={() => { setSelectedPatientId(ClinicStore.demoIdForName(d.patientName) || d.patientId); setPage('record'); }}
                       style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                       <td style={{ padding: '11px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -107,14 +108,14 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
             </Card>
 
             {/* High risk alert */}
-            {(() => { const highRisk = ClinicStore.highRiskPatients(); return highRisk.length > 0 && (
+            {(() => { const highRisk = clinic.highRiskPatients || []; return highRisk.length > 0 && (
               <Card style={{ borderColor: 'var(--danger)', background: 'var(--danger-bg)' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                   <Icon name="alertTriangle" size={18} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 1 }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--danger)', marginBottom: 4 }}>High-Risk Cases Pending</div>
                     {highRisk.map(p => (
-                      <div key={p.id} onClick={() => { setSelectedPatientId(p.id); setPage('record'); }}
+                      <div key={p.id} onClick={() => { setSelectedPatientId(ClinicStore.demoIdForName(p.name) || p.id); setPage('record'); }}
                         style={{ fontSize: 13, color: 'var(--danger)', cursor: 'pointer', marginBottom: 2 }}>
                         → {p.name}
                       </div>
@@ -136,19 +137,20 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
 const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }) => {
   const [search, setSearch] = useState('');
   const [filterRisk, setFilterRisk] = useState('all');
-  const clinic = useClinic();  // re-render when analyses update patient risk
+  const clinic = useClinic();  // live DB when online, demo cohort offline
 
-  const filtered = ClinicStore.patients().filter(p => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.diagnosis.includes(search.toLowerCase());
+  const filtered = (clinic.patients || []).filter(p => {
+    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || (p.diagnosis || '').includes(search.toLowerCase());
     const matchRisk = filterRisk === 'all' || p.riskLevel === filterRisk;
     return matchSearch && matchRisk;
   });
+  const totalCount = (clinic.patients || []).length;
 
   const skinTypeColor = t => ({ I:'#FAE8D4', II:'#F5D5B0', III:'#E5B98A', IV:'#C6935A', V:'#9B6B3A', VI:'#6B3E1A' }[t] || '#ccc');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="Patient Management" subtitle={`${filtered.length} of ${ClinicStore.patients().length} patients`} />
+      <TopBar title="Patient Management" subtitle={`${filtered.length} of ${totalCount} patients`} />
       <PageContent>
         {/* Filters */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
@@ -198,8 +200,8 @@ const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }
                   <td style={{ padding: '13px 16px' }}><RiskBadge level={p.riskLevel} /></td>
                   <td style={{ padding: '13px 16px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <Btn variant="secondary" size="sm" icon="eye" onClick={() => { setSelectedPatientId(p.id); setPage('record'); }}>View</Btn>
-                      <Btn variant="primary"   size="sm" icon="scan" onClick={() => { setDetectionPatientId(p.id); setPage('detection'); }}>Analyze</Btn>
+                      <Btn variant="secondary" size="sm" icon="eye" onClick={() => { setSelectedPatientId(ClinicStore.demoIdForName(p.name) || p.id); setPage('record'); }}>View</Btn>
+                      <Btn variant="primary"   size="sm" icon="scan" onClick={() => { setDetectionPatientId(ClinicStore.demoIdForName(p.name) || p.id); setPage('detection'); }}>Analyze</Btn>
                     </div>
                   </td>
                 </tr>
@@ -817,8 +819,9 @@ const DoctorRecord = ({ selectedPatientId, setPage, setDetectionPatientId }) => 
    DOCTOR APPOINTMENTS
 ════════════════════════════════════════ */
 const DoctorAppointments = () => {
-  const upcoming  = APPOINTMENTS.filter(a => a.status === 'scheduled');
-  const completed = APPOINTMENTS.filter(a => a.status === 'completed');
+  const { list, online, changeStatus } = useAppointments('doctor');
+  const upcoming  = (list || []).filter(a => a.status === 'scheduled');
+  const completed = (list || []).filter(a => a.status === 'completed');
 
   const AptCard = ({ a }) => (
     <div style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '14px 18px', borderTop: '1px solid var(--border)' }}>
@@ -829,14 +832,16 @@ const DoctorAppointments = () => {
         <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 2 }}>{a.patientName}</div>
         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{a.reason} · {a.date} · {a.duration} min</div>
       </div>
-      <StatusBadge status={a.status} />
+      {a.status === 'scheduled'
+        ? <Btn variant="success" size="sm" icon="check" onClick={() => changeStatus(a, 'completed')}>Mark done</Btn>
+        : <StatusBadge status={a.status} />}
     </div>
   );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <TopBar title="Appointments" subtitle="Manage your schedule"
-        actions={<Btn icon="plus">Book Appointment</Btn>} />
+        actions={<LiveBadge online={online} />} />
       <PageContent>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
           <Card padding="0">
@@ -844,7 +849,7 @@ const DoctorAppointments = () => {
               Upcoming <Badge variant="info">{upcoming.length}</Badge>
             </div>
             <Divider />
-            {upcoming.map(a => <AptCard key={a.id} a={a} />)}
+            {upcoming.length === 0 ? <EmptyState icon="calendar" message="No upcoming appointments" /> : upcoming.map(a => <AptCard key={a.id} a={a} />)}
           </Card>
           <Card padding="0">
             <div style={{ padding: '16px 18px', fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
