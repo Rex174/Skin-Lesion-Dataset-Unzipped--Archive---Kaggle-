@@ -237,6 +237,12 @@ class Appointment(db.Model):
 
     def __repr__(self):
         return f"<Appointment patient={self.patient_id} {self.date} {self.time} [{self.status}]>"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  MESSAGE TABLE  (two-way doctor ↔ patient messaging)
+# ══════════════════════════════════════════════════════════════════════════════
+class Message(db.Model):
     __tablename__ = "messages"
 
     id          = db.Column(db.Integer, primary_key=True)
