@@ -205,9 +205,38 @@ class Report(db.Model):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  MESSAGE TABLE  (two-way doctor ↔ patient messaging)
+#  APPOINTMENT TABLE  (doctor ↔ patient scheduling)
 # ══════════════════════════════════════════════════════════════════════════════
-class Message(db.Model):
+class Appointment(db.Model):
+    __tablename__ = "appointments"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    patient_id   = db.Column(db.Integer, db.ForeignKey("patients.id"), nullable=False, index=True)
+    doctor_id    = db.Column(db.Integer, db.ForeignKey("doctors.id"),  nullable=True)
+    date         = db.Column(db.Date,   nullable=False)          # appointment day
+    time         = db.Column(db.String(5), nullable=False)       # "HH:MM" 24h
+    duration     = db.Column(db.Integer, default=30)             # minutes
+    reason       = db.Column(db.String(120))
+    status       = db.Column(db.String(12), default="scheduled") # scheduled|completed|cancelled
+    booked_by    = db.Column(db.String(10), default="patient")   # patient|doctor
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        pat = Patient.query.get(self.patient_id) if self.patient_id else None
+        return {
+            "id":          "APT%03d" % self.id,
+            "dbId":        self.id,
+            "patientId":   self.patient_id,
+            "patientName": pat.full_name if pat else "Unknown",
+            "date":        self.date.strftime("%Y-%m-%d") if self.date else None,
+            "time":        self.time,
+            "duration":    self.duration,
+            "reason":      self.reason,
+            "status":      self.status,
+        }
+
+    def __repr__(self):
+        return f"<Appointment patient={self.patient_id} {self.date} {self.time} [{self.status}]>"
     __tablename__ = "messages"
 
     id          = db.Column(db.Integer, primary_key=True)
