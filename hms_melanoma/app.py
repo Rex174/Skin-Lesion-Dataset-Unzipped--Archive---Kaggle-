@@ -6,18 +6,24 @@ TP070818 | Ramaneiss Pillai S Gopalan
 
 HOW TO RUN:
     1. pip install flask flask-sqlalchemy werkzeug reportlab pillow
-    2. python app.py --init-db   (first time only)
+    2. python app.py --init-db   (first time only — seeds doctor + 8 patients)
     3. python app.py
     4. Open: http://127.0.0.1:5000
+
+NOTE: this seed inserts the 8 MelanoScan patients (Aisha Rahman … Ahmed
+Al-Rashid) as real database records, each with a login account and an initial
+melanoma-check, so the Dashboard and Patients page read live from the DB.
 ===================================================================================
 """
 
 import sys
 import os
-from datetime import date
+import json
+import re
+from datetime import date, datetime
 
 from flask import Flask, redirect, send_from_directory
-from models.db_models import db, User, Patient, DoctorProfile
+from models.db_models import db, User, Patient, DoctorProfile, MelanomaCheck
 from config import config
 
 
@@ -26,8 +32,6 @@ def create_app() -> Flask:
     app.config.from_object(config)
 
     # ── CRITICAL: allow session cookies to be sent with fetch() POST requests ─
-    # Without this, every API call after login arrives with an empty session,
-    # causing @login_required to return 401 and the frontend to show "Failed to fetch"
     app.config["SESSION_COOKIE_SAMESITE"] = None
     app.config["SESSION_COOKIE_SECURE"]   = False  # False for HTTP localhost
 
@@ -58,15 +62,45 @@ def create_app() -> Flask:
     return app
 
 
+# ── The 8 MelanoScan patients (mirrors the frontend cohort) ──────────────────
+DX_LABELS = {
+    "mel": "Melanoma", "nv": "Melanocytic Nevi", "bcc": "Basal Cell Carcinoma",
+    "akiec": "Actinic Keratosis", "bkl": "Benign Keratosis",
+    "df": "Dermatofibroma", "vasc": "Vascular Lesion",
+}
+
+# name, age, sex, skin_type, ita, localization, risk(high/moderate/low), dx,
+# phone, email, blood, allergies, last_visit, confidence, notes
+SEED_PATIENTS = [
+    ("Aisha Rahman",   34, "female", "IV",  -15, "back",            "high",     "mel",   "+60 12-345 6789", "aisha.r@email.com",   "A+",  "Penicillin",   "2026-04-15", 0.87, "Recent growth in lesion size. Referred from GP. Urgent biopsy advised."),
+    ("Tom Hendricks",  67, "male",   "II",   42, "face",            "low",      "nv",    "+60 11-234 5678", "tom.h@email.com",     "O+",  "None",         "2026-04-10", 0.92, "Routine monitoring of multiple benign nevi. Fair skin, high sun exposure."),
+    ("Maya Krishnan",  45, "female", "V",   -28, "upper extremity", "moderate", "bcc",   "+60 16-789 0123", "maya.k@email.com",    "B+",  "Sulfonamides", "2026-04-08", 0.79, "BCC on left forearm. Surgical excision scheduled next month."),
+    ("James O'Brien",  52, "male",   "I",    58, "scalp",           "moderate", "akiec", "+60 17-456 7890", "james.ob@email.com",  "AB-", "Aspirin",      "2026-04-05", 0.74, "Actinic keratosis on scalp. Extensive sun damage. Cryotherapy applied."),
+    ("Fatimah Idris",  28, "female", "VI",  -45, "trunk",           "high",     "mel",   "+60 13-567 8901", "fatimah.i@email.com", "O-",  "None",         "2026-04-18", 0.81, "Suspicious irregular lesion on trunk. High-risk result. Excisional biopsy pending."),
+    ("Lin Chen",       41, "male",   "III",  12, "lower extremity", "low",      "bkl",   "+60 14-678 9012", "lin.c@email.com",     "A-",  "Latex",        "2026-03-28", 0.88, "Seborrheic keratosis on lower leg. Reassured. Annual monitoring."),
+    ("Sarah Pearce",   19, "female", "II",   38, "back",            "low",      "nv",    "+60 18-789 0123", "sarah.p@email.com",   "B-",  "None",         "2026-04-12", 0.90, "Dysplastic nevus on upper back. Annual dermoscopic follow-up."),
+    ("Ahmed Al-Rashid",58, "male",   "IV",   -8, "face",            "low",      "df",    "+60 19-890 1234", "ahmed.ar@email.com",  "O+",  "NSAIDs",       "2026-04-01", 0.83, "Dermatofibroma on left cheek confirmed. No treatment required."),
+]
+
+
+def _username(name: str) -> str:
+    """Match the frontend rule: 'Aisha Rahman' -> 'aisha_rahman'."""
+    u = name.lower().replace("'", "").replace("\u2019", "").replace(".", "")
+    u = re.sub(r"[^a-z0-9]+", "_", u).strip("_")
+    return u
+
+
 def init_db(app):
     with app.app_context():
         db.create_all()
         print("[OK] Database tables created.")
 
         if User.query.count() > 0:
-            print("[INFO] Already seeded. Skipping.")
+            print("[INFO] Database already seeded. Skipping.")
+            print("       (Delete the .db file and re-run --init-db to reseed.)")
             return
 
+        # ── Doctor ───────────────────────────────────────────────────────────
         doc_user = User(username="dr_ramaneiss", email="dr.ramaneiss@hms.com", role="doctor")
         doc_user.set_password("doctor123")
         db.session.add(doc_user)
@@ -80,33 +114,47 @@ def init_db(app):
         db.session.add(doctor)
         db.session.flush()
 
-        pat_user = User(username="john_doe", email="john.doe@email.com", role="patient")
-        pat_user.set_password("patient123")
-        db.session.add(pat_user)
-        db.session.flush()
+        # ── 8 patients (login + profile + initial melanoma-check) ─────────────
+        for (name, age, sex, skin, ita, loc, risk, dx, phone, email,
+             blood, allergies, last_visit, conf, notes) in SEED_PATIENTS:
 
-        patient = Patient(
-            user_id=pat_user.id, full_name="John Doe",
-            date_of_birth=date(1985, 6, 15), sex="male",
-            contact_number="+60-11-999-8888", assigned_doctor_id=doctor.id,
-        )
-        db.session.add(patient)
-        db.session.flush()
+            uname = _username(name)
+            pu = User(username=uname, email=email, role="patient")
+            pu.set_password("patient123")
+            db.session.add(pu)
+            db.session.flush()
 
-        pat2_user = User(username="jane_smith", email="jane.smith@email.com", role="patient")
-        pat2_user.set_password("patient123")
-        db.session.add(pat2_user)
-        db.session.flush()
+            patient = Patient(
+                user_id=pu.id, full_name=name,
+                date_of_birth=date(date.today().year - age, 1, 1),
+                sex=sex, contact_number=phone, email=email,
+                skin_type=skin, ita=ita, localization=loc,
+                blood_type=blood, allergies=allergies,
+                known_diagnosis=dx, clinical_notes=notes,
+                assigned_doctor_id=doctor.id,
+            )
+            db.session.add(patient)
+            db.session.flush()
 
-        patient2 = Patient(
-            user_id=pat2_user.id, full_name="Jane Smith",
-            date_of_birth=date(1972, 3, 22), sex="female",
-            contact_number="+60-11-777-5555", assigned_doctor_id=doctor.id,
-        )
-        db.session.add(patient2)
+            # Seed one melanoma check so risk / last-visit / recent-analyses
+            # populate live from the database.
+            probs = {k: 0.02 for k in DX_LABELS}
+            probs[dx] = round(conf, 4)
+            chk = MelanomaCheck(
+                patient_id=patient.id, doctor_id=doctor.id,
+                image_filename="seed.jpg", image_path="static/uploads/seed.jpg",
+                model_used="enhanced_v2", predicted_class=dx,
+                predicted_label=DX_LABELS[dx], confidence_score=conf,
+                risk_level=risk, all_probabilities=json.dumps(probs),
+                fairness_note=None, performed_by="doctor",
+                timestamp=datetime.strptime(last_visit, "%Y-%m-%d"),
+            )
+            db.session.add(chk)
+
         db.session.commit()
-
-        print("[OK] Seeded: dr_ramaneiss/doctor123 | john_doe/patient123 | jane_smith/patient123")
+        names = ", ".join(_username(p[0]) for p in SEED_PATIENTS)
+        print(f"[OK] Seeded doctor (dr_ramaneiss/doctor123) + {len(SEED_PATIENTS)} patients.")
+        print(f"     Patient logins (password patient123): {names}")
 
 
 app = create_app()
@@ -115,10 +163,10 @@ if __name__ == "__main__":
     if "--init-db" in sys.argv:
         init_db(app)
     else:
-        print("=" * 50)
+        print("=" * 54)
         print("  MelanoScan HMS  |  TP070818")
         print("  Open: http://127.0.0.1:5000")
         print("  Doctor:  dr_ramaneiss / doctor123")
-        print("  Patient: john_doe     / patient123")
-        print("=" * 50)
+        print("  Patient: aisha_rahman / patient123  (+ 7 more)")
+        print("=" * 54)
         app.run(debug=True, host="0.0.0.0", port=5000)
