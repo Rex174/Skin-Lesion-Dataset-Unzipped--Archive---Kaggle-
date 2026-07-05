@@ -74,7 +74,33 @@ const DX_LABELS = { mel:'Melanoma', nv:'Melanocytic Nevi', bcc:'Basal Cell Carci
 const DX_ORDER  = ['mel','nv','bcc','akiec','bkl','df','vasc'];
 
 const DOCTOR_USER  = { id:'D001', name:'Dr. Ramaneiss Pillai', role:'doctor', specialty:'Dermatology', initials:'RP' };
+
+/* Patient login accounts derived from the real patient list.
+   Username = first_last (lowercased, punctuation stripped), e.g.
+   "Aisha Rahman" → aisha_rahman, "James O'Brien" → james_obrien. */
+function patientUsername(name) {
+  return name.toLowerCase()
+    .replace(/['\u2019.]/g, '')       // drop apostrophes / dots
+    .replace(/[^a-z0-9]+/g, '_')      // any run of non-alphanumerics → _
+    .replace(/^_+|_+$/g, '');         // trim leading/trailing _
+}
+const PATIENT_ACCOUNTS = PATIENTS.map(p => ({
+  username: patientUsername(p.name),
+  password: 'patient123',
+  patientId: p.id,
+  name: p.name,
+}));
+
+/* The currently signed-in patient. Defaults to the first patient; login
+   swaps it via setCurrentPatient() so the whole patient portal reflects
+   whoever is logged in. Reassigning the global is enough because every
+   patient screen reads PATIENT_USER fresh when it (re)mounts after login. */
 const PATIENT_USER = PATIENTS[0];
+function setCurrentPatient(patientId) {
+  const p = PATIENTS.find(x => x.id === patientId);
+  if (p) window.PATIENT_USER = p;
+  return window.PATIENT_USER;
+}
 
 const ANALYTICS_DATA = {
   /* Equal Opportunity Difference per protected axis — REAL values:
@@ -239,7 +265,7 @@ Object.assign(window, {
   PATIENTS, DETECTIONS, APPOINTMENTS,
   NOTIFICATIONS_DOCTOR, NOTIFICATIONS_PATIENT,
   MESSAGES, DX_LABELS, DX_ORDER,
-  DOCTOR_USER, PATIENT_USER, ANALYTICS_DATA,
+  DOCTOR_USER, PATIENT_USER, PATIENT_ACCOUNTS, patientUsername, setCurrentPatient, ANALYTICS_DATA,
   // API layer (used by melanoma checker)
   AuthApi, DoctorApi, PatientApi,
   LOCALIZATIONS, apiFetch,

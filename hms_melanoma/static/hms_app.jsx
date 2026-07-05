@@ -44,14 +44,28 @@ function applyTheme(theme) {
 }
 
 /* ── Login screen ───────────────────────────────────────── */
-/* Demo accounts for OFFLINE fallback only — these mirror the users the Flask
-   backend seeds (app.py init_db). When the backend is running, real login is
+/* Demo accounts for OFFLINE fallback only. The doctor mirrors the user the
+   Flask backend seeds; the patient accounts are generated from the real
+   patient list (aisha_rahman, tom_hendricks, …) so signing in lands you in
+   that specific patient's portal. When the backend is running, real login is
    used instead and these are never consulted. */
-const DEMO_ACCOUNTS = {
-  dr_ramaneiss: { password: 'doctor123',  user: { username: 'dr_ramaneiss', role: 'doctor',  full_name: 'Dr. Ramaneiss', specialization: 'Dermatology' } },
-  john_doe:     { password: 'patient123', user: { username: 'john_doe',     role: 'patient', full_name: 'John Doe' } },
-  jane_smith:   { password: 'patient123', user: { username: 'jane_smith',   role: 'patient', full_name: 'Jane Smith' } },
-};
+const DEMO_ACCOUNTS = (() => {
+  const map = {
+    dr_ramaneiss: { password: 'doctor123', user: { username: 'dr_ramaneiss', role: 'doctor', full_name: 'Dr. Ramaneiss', specialization: 'Dermatology' } },
+  };
+  (typeof PATIENT_ACCOUNTS !== 'undefined' ? PATIENT_ACCOUNTS : []).forEach(a => {
+    map[a.username] = { password: a.password, user: { username: a.username, role: 'patient', full_name: a.name, patientId: a.patientId } };
+  });
+  return map;
+})();
+
+/* Resolve a backend-returned username to one of our patient records, so the
+   portal shows the right patient even when Flask handles auth. */
+function resolvePatientId(username) {
+  const acc = (typeof PATIENT_ACCOUNTS !== 'undefined' ? PATIENT_ACCOUNTS : [])
+    .find(a => a.username === String(username || '').trim().toLowerCase());
+  return acc ? acc.patientId : null;
+}
 
 const LoginScreen = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = React.useState(null);
@@ -69,6 +83,10 @@ const LoginScreen = ({ onLogin }) => {
     try {
       const user = await AuthApi.login(form.username, form.password);
       window.HMS_USER = user;           // make profile available globally
+      if (user.role === 'patient') {
+        const pid = user.patientId || user.patient_id || resolvePatientId(user.username);
+        if (pid) setCurrentPatient(pid);
+      }
       onLogin(user.role);
     } catch (err) {
       // Offline fallback: when the Flask backend isn't reachable (e.g. this
@@ -77,11 +95,12 @@ const LoginScreen = ({ onLogin }) => {
       const demo = DEMO_ACCOUNTS[form.username.trim().toLowerCase()];
       if (demo && demo.password === form.password) {
         window.HMS_USER = { ...demo.user, _demo: true };
+        if (demo.user.role === 'patient' && demo.user.patientId) setCurrentPatient(demo.user.patientId);
         onLogin(demo.user.role);
       } else if (demo) {
         setError('Incorrect password for this account.');
       } else {
-        setError('Unknown username. Try dr_ramaneiss / doctor123 (see hint below).');
+        setError('Unknown username. Try dr_ramaneiss / doctor123 or a patient e.g. aisha_rahman / patient123.');
       }
     } finally {
       setLoading(false);
@@ -186,7 +205,7 @@ const LoginScreen = ({ onLogin }) => {
 
               {[
                 { label: 'Username', key: 'username', type: 'text',
-                  placeholder: selectedRole === 'doctor' ? 'dr_ramaneiss' : 'john_doe' },
+                  placeholder: selectedRole === 'doctor' ? 'dr_ramaneiss' : 'aisha_rahman' },
                 { label: 'Password', key: 'password', type: 'password', placeholder: '••••••••' },
               ].map(f => (
                 <div key={f.key} style={{ marginBottom: 18 }}>
@@ -213,7 +232,7 @@ const LoginScreen = ({ onLogin }) => {
 
               <div style={{ padding: '10px 14px', background: 'var(--surface-2)',
                 borderRadius: 9, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                <strong>Demo:</strong> {selectedRole === 'doctor' ? 'dr_ramaneiss / doctor123' : 'john_doe / patient123'}
+                <strong>Demo:</strong> {selectedRole === 'doctor' ? 'dr_ramaneiss / doctor123' : 'aisha_rahman / patient123'}
               </div>
             </>
           )}
