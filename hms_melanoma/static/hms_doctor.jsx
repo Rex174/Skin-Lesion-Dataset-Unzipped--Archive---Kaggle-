@@ -819,24 +819,82 @@ const DoctorRecord = ({ selectedPatientId, setPage, setDetectionPatientId }) => 
    DOCTOR APPOINTMENTS
 ════════════════════════════════════════ */
 const DoctorAppointments = () => {
-  const { list, online, changeStatus } = useAppointments('doctor');
+  const { list, online, changeStatus, reschedule } = useAppointments('doctor');
   const upcoming  = (list || []).filter(a => a.status === 'scheduled');
   const completed = (list || []).filter(a => a.status === 'completed');
+  const cancelled = (list || []).filter(a => a.status === 'cancelled');
+  const [actionSel, setActionSel] = React.useState({}); // { [apptId]: 'completed'|'reschedule'|'cancelled' }
+  const [form, setForm] = React.useState({});           // { [apptId]: {date, time} }
+  const [busyId, setBusyId] = React.useState(null);
 
-  const AptCard = ({ a }) => (
-    <div style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '14px 18px', borderTop: '1px solid var(--border)' }}>
-      <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--info-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--info)', lineHeight: 1 }}>{a.time}</div>
+  const setAction = (id, val) => setActionSel(s => ({ ...s, [id]: val }));
+  const setField  = (id, patch) => setForm(s => ({ ...s, [id]: { ...(s[id] || {}), ...patch } }));
+
+  const confirmAction = async (a) => {
+    const action = actionSel[a.id];
+    if (!action) return;
+    setBusyId(a.id);
+    if (action === 'reschedule') {
+      const f = form[a.id] || {};
+      if (!f.date || !f.time) { setBusyId(null); return; }
+      await reschedule(a, { date: f.date, time: f.time });
+    } else {
+      await changeStatus(a, action); // 'completed' | 'cancelled'
+    }
+    setBusyId(null);
+    setActionSel(s => { const n = { ...s }; delete n[a.id]; return n; });
+  };
+
+  const AptCard = ({ a }) => {
+    const action = actionSel[a.id] || '';
+    const f = form[a.id] || { date: a.date || '', time: a.time || '' };
+    const isReschedule = action === 'reschedule';
+    return (
+      <div style={{ borderTop: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '14px 18px' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: a.status === 'cancelled' ? 'var(--surface-2)' : 'var(--info-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: a.status === 'cancelled' ? 'var(--text-muted)' : 'var(--info)', lineHeight: 1 }}>{a.time}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 2 }}>{a.patientName}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{a.reason} · {a.date} · {a.duration} min</div>
+          </div>
+          {a.status === 'scheduled' ? (
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+              <select value={action} onChange={e => setAction(a.id, e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', color: action ? 'var(--text)' : 'var(--text-muted)', background: 'var(--surface)', outline: 'none', cursor: 'pointer' }}>
+                <option value="">Select action…</option>
+                <option value="completed">Mark done</option>
+                <option value="reschedule">Reschedule</option>
+                <option value="cancelled">Cancel</option>
+              </select>
+              <Btn size="sm" icon="check" onClick={() => confirmAction(a)}
+                disabled={!action || busyId === a.id || (isReschedule && (!f.date || !f.time))}>
+                {busyId === a.id ? 'Saving…' : 'Confirm'}
+              </Btn>
+            </div>
+          ) : (
+            <StatusBadge status={a.status} />
+          )}
+        </div>
+        {a.status === 'scheduled' && isReschedule && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', padding: '0 18px 16px 84px', background: 'var(--surface-2)' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', margin: '10px 0 5px' }}>New date</div>
+              <input type="date" value={f.date} onChange={e => setField(a.id, { date: e.target.value })}
+                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none', color: 'var(--text)' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', margin: '10px 0 5px' }}>New time</div>
+              <input type="time" value={f.time} onChange={e => setField(a.id, { time: e.target.value })}
+                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none', color: 'var(--text)' }} />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', paddingBottom: 9 }}>Click <strong>Confirm</strong> to save the new slot</div>
+          </div>
+        )}
       </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 2 }}>{a.patientName}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{a.reason} · {a.date} · {a.duration} min</div>
-      </div>
-      {a.status === 'scheduled'
-        ? <Btn variant="success" size="sm" icon="check" onClick={() => changeStatus(a, 'completed')}>Mark done</Btn>
-        : <StatusBadge status={a.status} />}
-    </div>
-  );
+    );
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -851,13 +909,22 @@ const DoctorAppointments = () => {
             <Divider />
             {upcoming.length === 0 ? <EmptyState icon="calendar" message="No upcoming appointments" /> : upcoming.map(a => <AptCard key={a.id} a={a} />)}
           </Card>
-          <Card padding="0">
-            <div style={{ padding: '16px 18px', fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              Completed <Badge variant="success">{completed.length}</Badge>
-            </div>
-            <Divider />
-            {completed.map(a => <AptCard key={a.id} a={a} />)}
-          </Card>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <Card padding="0">
+              <div style={{ padding: '16px 18px', fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                Completed <Badge variant="success">{completed.length}</Badge>
+              </div>
+              <Divider />
+              {completed.length === 0 ? <EmptyState icon="check" message="No completed appointments" /> : completed.map(a => <AptCard key={a.id} a={a} />)}
+            </Card>
+            <Card padding="0">
+              <div style={{ padding: '16px 18px', fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                Cancelled <Badge variant="danger">{cancelled.length}</Badge>
+              </div>
+              <Divider />
+              {cancelled.length === 0 ? <EmptyState icon="xMark" message="No cancelled appointments" /> : cancelled.map(a => <AptCard key={a.id} a={a} />)}
+            </Card>
+          </div>
         </div>
       </PageContent>
     </div>
