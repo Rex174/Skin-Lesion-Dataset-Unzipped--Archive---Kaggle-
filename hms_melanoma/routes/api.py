@@ -12,7 +12,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request, session, current_app
 from werkzeug.utils import secure_filename
 
-from models.db_models import db, User, Patient, DoctorProfile, MedicalHistory, MelanomaCheck, Report, Message
+from models.db_models import db, User, Patient, DoctorProfile, MedicalHistory, MelanomaCheck, Report, Message, Appointment
 from routes.auth import login_required, allowed_file
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -864,3 +864,106 @@ def messages_threads():
     # Unread first, then most-recent activity
     threads.sort(key=lambda t: (t["unread"], (t["last"] or {}).get("ts", 0)), reverse=True)
     return _ok(threads)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  APPOINTMENTS  (database-backed scheduling)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@api_bp.route("/appointments")
+@login_required
+def appointments_get():
+    """Patient → own appointments. Doctor → all their patients' appointments."""
+    role = session.get("role")
+    q = Appointment.query
+    if role == "patient":
+        patient = Patient.query.filter_by(user_id=session["user_id"]).first_or_404()
+        q = q.filter_by(patient_id=patient.id)
+    elif role == "doctor":
+        doctor = DoctorProfile.query.filter_by(user_id=session["user_id"]).first_or_404()
+        pids = [p.id for p in doctor.patients]
+        q = q.filter(Appointment.patient_id.in_(pids)) if pids else q.filter(db.false())
+    else:
+        return _err("Forbidden", 403)
+    appts = q.order_by(Appointment.date.asc(), Appointment.time.asc()).all()
+    return _ok([a.to_dict() for a in appts])
+
+
+@api_bp.route("/appointments", methods=["POST"])
+@login_required
+def appointments_post():
+    """Book an appointment. Patient books their own; doctor books for a patient
+    (body.patient_id required in that case)."""
+    body = request.get_json(force=True) or {}
+    role = session.get("role")
+
+    if role == "patient":
+        patient = Patient.query.filter_by(user_id=session["user_id"]).first_or_404()
+        doctor_id = patient.assigned_doctor_id
+        booked_by = "patient"
+    elif role == "doctor":
+        doctor = DoctorProfile.query.filter_by(user_id=session["user_id"]).first_or_404()
+        patient = Patient.query.get(body.get("patient_id"))
+        if not patient:
+            return _err("patient_id required", 400)
+        doctor_id = doctor.id
+        booked_by = "doctor"
+    else:
+        return _err("Forbidden", 403)
+
+    date_str = (body.get("date") or "").strip()
+    time_str = (body.get("time") or "").strip()
+    if not date_str or not time_str:
+        return _err("date and time are required", 400)
+    try:
+        appt_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return _err("date must be YYYY-MM-DD", 400)
+
+    appt = Appointment(
+        patient_id=patient.id, doctor_id=doctor_id,
+        date=appt_date, time=time_str,
+        duration=int(body.get("duration", 30)),
+        reason=(body.get("reason") or "Consultation").strip(),
+        status="scheduled", booked_by=booked_by,
+    )
+    db.session.add(appt)
+    db.session.commit()
+    return _ok(appt.to_dict())
+
+
+@api_bp.route("/appointments/<int:appt_id>", methods=["PATCH"])
+@login_required
+def appointments_patch(appt_id):
+    """Update an appointment: reschedule (date/time), or change status
+    (cancelled / completed)."""
+    appt = Appointment.query.get_or_404(appt_id)
+    role = session.get("role")
+
+    # Authorisation: patient may only touch their own; doctor their patients'
+    if role == "patient":
+        patient = Patient.query.filter_by(user_id=session["user_id"]).first_or_404()
+        if appt.patient_id != patient.id:
+            return _err("Forbidden", 403)
+    elif role == "doctor":
+        doctor = DoctorProfile.query.filter_by(user_id=session["user_id"]).first_or_404()
+        pat = Patient.query.get(appt.patient_id)
+        if not pat or pat.assigned_doctor_id != doctor.id:
+            return _err("Forbidden", 403)
+    else:
+        return _err("Forbidden", 403)
+
+    body = request.get_json(force=True) or {}
+    if "date" in body and body["date"]:
+        try:
+            appt.date = datetime.strptime(body["date"], "%Y-%m-%d").date()
+        except ValueError:
+            return _err("date must be YYYY-MM-DD", 400)
+    if body.get("time"):
+        appt.time = body["time"].strip()
+    if body.get("reason"):
+        appt.reason = body["reason"].strip()
+    if body.get("status") in ("scheduled", "completed", "cancelled"):
+        appt.status = body["status"]
+    db.session.commit()
+    return _ok(appt.to_dict())
