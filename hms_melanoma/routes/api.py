@@ -526,6 +526,17 @@ def doctor_dashboard():
     checks_today    = MelanomaCheck.query.filter_by(doctor_id=doctor.id)\
                         .filter(db.func.date(MelanomaCheck.timestamp) == today).count()
     high_risk_count = MelanomaCheck.query.filter_by(doctor_id=doctor.id, risk_level="high").count()
+    # Distinct patients currently flagged high-risk (for the pending list)
+    high_risk_patients = []
+    seen = set()
+    for c in MelanomaCheck.query.filter_by(doctor_id=doctor.id, risk_level="high")\
+              .order_by(MelanomaCheck.timestamp.desc()).all():
+        if c.patient_id in seen:
+            continue
+        seen.add(c.patient_id)
+        pat = Patient.query.get(c.patient_id)
+        if pat:
+            high_risk_patients.append({"id": pat.id, "name": pat.full_name})
     recent_checks   = []
     for c in MelanomaCheck.query.filter_by(doctor_id=doctor.id)\
               .order_by(MelanomaCheck.timestamp.desc()).limit(5).all():
@@ -535,12 +546,14 @@ def doctor_dashboard():
             "patientName": pat.full_name if pat else "Unknown",
             "date": c.timestamp.strftime("%Y-%m-%d"),
             "dx": c.predicted_class, "dxLabel": c.predicted_label,
-            "confidence": c.confidence_score, "riskLevel": c.risk_level,
+            "confidence": c.confidence_score,
+            "riskLevel": "medium" if c.risk_level == "moderate" else c.risk_level,
         })
     return _ok({
         "totalPatients": total_patients,
         "checksToday": checks_today,
-        "highRiskCount": high_risk_count,
+        "highRiskCount": len(high_risk_patients),
+        "highRiskPatients": high_risk_patients,
         "recentChecks": recent_checks,
     })
 
@@ -559,11 +572,21 @@ def doctor_patients():
     for p in query.order_by(Patient.full_name).all():
         latest = MelanomaCheck.query.filter_by(patient_id=p.id)\
                    .order_by(MelanomaCheck.timestamp.desc()).first()
+        # Normalise risk wording for the UI (backend uses 'moderate')
+        risk = (latest.risk_level if latest else None) or "unknown"
+        if risk == "moderate":
+            risk = "medium"
         patients.append({
             "id": p.id, "name": p.full_name, "age": p.age,
-            "sex": p.sex, "ageGroup": p.age_group,
+            "sex": (p.sex or "").capitalize(), "ageGroup": p.age_group,
+            "skinType": p.skin_type or "—", "ita": p.ita,
+            "localization": p.localization or "—",
+            "diagnosis": p.known_diagnosis or "",
+            "bloodType": p.blood_type, "allergies": p.allergies,
+            "email": p.email, "phone": p.contact_number,
+            "notes": p.clinical_notes,
             "lastVisit": latest.timestamp.strftime("%Y-%m-%d") if latest else None,
-            "riskLevel": latest.risk_level if latest else "unknown",
+            "riskLevel": risk,
         })
     return _ok(patients)
 
