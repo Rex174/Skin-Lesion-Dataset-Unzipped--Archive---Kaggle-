@@ -23,7 +23,7 @@ import re
 from datetime import date, datetime
 
 from flask import Flask, redirect, send_from_directory
-from models.db_models import db, User, Patient, DoctorProfile, MelanomaCheck
+from models.db_models import db, User, Patient, DoctorProfile, MelanomaCheck, Appointment
 from config import config
 
 
@@ -83,6 +83,19 @@ SEED_PATIENTS = [
 ]
 
 
+# patient_index, date, time, duration, reason, status
+SEED_APPOINTMENTS = [
+    (0, "2026-04-22", "09:00", 30, "Biopsy Follow-up",       "scheduled"),
+    (4, "2026-04-22", "10:30", 45, "Biopsy Consultation",    "scheduled"),
+    (1, "2026-04-23", "11:00", 20, "Routine Monitoring",     "scheduled"),
+    (2, "2026-04-24", "14:00", 30, "Pre-surgery Consult",    "scheduled"),
+    (3, "2026-04-21", "09:30", 30, "Treatment Review",       "completed"),
+    (6, "2026-04-20", "15:00", 20, "Annual Check-up",        "completed"),
+    (5, "2026-04-25", "09:00", 30, "New Lesion Assessment",  "scheduled"),
+    (7, "2026-04-28", "13:00", 20, "6-Month Follow-up",      "scheduled"),
+]
+
+
 def _username(name: str) -> str:
     """Match the frontend rule: 'Aisha Rahman' -> 'aisha_rahman'."""
     u = name.lower().replace("'", "").replace("\u2019", "").replace(".", "")
@@ -115,6 +128,7 @@ def init_db(app):
         db.session.flush()
 
         # ── 8 patients (login + profile + initial melanoma-check) ─────────────
+        patient_ids = []
         for (name, age, sex, skin, ita, loc, risk, dx, phone, email,
              blood, allergies, last_visit, conf, notes) in SEED_PATIENTS:
 
@@ -150,6 +164,16 @@ def init_db(app):
                 timestamp=datetime.strptime(last_visit, "%Y-%m-%d"),
             )
             db.session.add(chk)
+            patient_ids.append(patient.id)
+
+        # ── Appointments ─────────────────────────────────────────────────────
+        for (pidx, date_str, time_str, dur, reason, status) in SEED_APPOINTMENTS:
+            db.session.add(Appointment(
+                patient_id=patient_ids[pidx], doctor_id=doctor.id,
+                date=datetime.strptime(date_str, "%Y-%m-%d").date(),
+                time=time_str, duration=dur, reason=reason,
+                status=status, booked_by="patient",
+            ))
 
         db.session.commit()
         names = ", ".join(_username(p[0]) for p in SEED_PATIENTS)
