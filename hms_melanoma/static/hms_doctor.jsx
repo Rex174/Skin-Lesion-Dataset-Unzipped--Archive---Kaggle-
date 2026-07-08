@@ -230,6 +230,25 @@ const DoctorDetection = ({ detectionPatientId }) => {
 
   React.useEffect(() => { if (detectionPatientId) setSelectedPid(detectionPatientId); }, [detectionPatientId]);
 
+  // Past detection history for the selected patient (live DB when numeric id)
+  const [history, setHistory] = React.useState([]);
+  React.useEffect(() => {
+    const isDbId = /^\d+$/.test(String(selectedPid));
+    if (!selectedPid) { setHistory([]); return; }
+    if (!isDbId) { setHistory(DETECTIONS.filter(d => d.patientId === selectedPid)); return; }
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await apiFetch('/api/doctor/patients/' + selectedPid + '/record');
+        const d = r.data || r;
+        if (alive) setHistory(d.detections || []);
+      } catch (e) { if (alive) setHistory([]); }
+    };
+    load();
+    const id = setInterval(load, 5000);
+    return () => { alive = false; clearInterval(id); };
+  }, [selectedPid, step]);
+
   const handleFile = e => {
     const f = e.target.files[0];
     if (f) { setFileUrl(URL.createObjectURL(f)); setFileObj(f); }
@@ -558,6 +577,43 @@ const DoctorDetection = ({ detectionPatientId }) => {
                 </div>
               )}
             </div>
+
+            {/* Detection History for the selected patient */}
+            {selectedPid && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <Card padding="0">
+                  <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>Detection History{patient ? ` — ${patient.name}` : ''}</div>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{history.length} past analysis{history.length === 1 ? '' : 'es'}</span>
+                  </div>
+                  <Divider />
+                  {history.length === 0 ? (
+                    <EmptyState icon="scan" message="No past analyses for this patient yet" />
+                  ) : history.map(h => (
+                    <div key={h.id} style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 9, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Icon name="fileText" size={16} style={{ color: 'var(--primary)' }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{h.dxLabel}</span>
+                          <RiskBadge level={h.riskLevel} />
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{h.date} · Confidence {((h.confidence <= 1 ? h.confidence * 100 : h.confidence)).toFixed(0)}%{h.notes ? ' · has notes' : ''}</div>
+                      </div>
+                      <Btn variant="secondary" size="sm" icon="download"
+                        onClick={() => downloadAnalysisReport(
+                          patient,
+                          { ...h, localization: (patient && patient.localization) || localization, eodAxes: (eodForPatient(patient) || {}).axes },
+                          h.notes
+                        )}>
+                        Report
+                      </Btn>
+                    </div>
+                  ))}
+                </Card>
+              </div>
+            )}
           </div>
         )}
 
@@ -631,7 +687,11 @@ const DoctorDetection = ({ detectionPatientId }) => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <Btn variant="secondary" icon="refresh" onClick={reset}>New Analysis</Btn>
                 <Btn variant="primary" icon="download"
-                  onClick={() => patient && DoctorApi.generateReport(patient.id)}>
+                  onClick={() => downloadAnalysisReport(
+                    patient,
+                    { ...resultE, localization, date: new Date().toISOString().slice(0,10), eodAxes: (eodForPatient(patient) || {}).axes },
+                    notes
+                  )}>
                   Download Report
                 </Btn>
               </div>
@@ -683,10 +743,6 @@ const DoctorDetection = ({ detectionPatientId }) => {
                       </div>
                     </div>
                   ))}
-
-                  <div style={{ marginTop: 6, padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-                    The hybrid framework (stratified sampling + reweighting + cGAN augmentation) equalises melanoma detection across age, sex and lesion location — the largest gains are in age-group and sex fairness.
-                  </div>
                 </Card>
               </div>
             </div>
@@ -1122,9 +1178,22 @@ const DoctorAnalytics = () => {
    DOCTOR NOTIFICATIONS
 ════════════════════════════════════════ */
 const DoctorNotifications = () => {
-  const [notifs, setNotifs] = useState(NOTIFICATIONS_DOCTOR);
-  const markAllRead = () => setNotifs(n => n.map(x => ({ ...x, read: true })));
-  const unread = notifs.filter(n => !n.read).length;
+  // Persist which notifications have been read so they stay read across
+  // navigation / reload (previously the read state was in-memory only).
+  const READ_KEY = 'hms_doctor_read_notifs';
+  const loadRead = () => { try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || '[]')); } catch { return new Set(); } };
+  const [readIds, setReadIds] = useState(loadRead);
+  const persist = (set) => { localStorage.setItem(READ_KEY, JSON.stringify([...set])); };
+
+  const isRead = (n) => n.read || readIds.has(n.id);
+  const markRead = (id) => setReadIds(prev => {
+    if (prev.has(id)) return prev;
+    const next = new Set(prev); next.add(id); persist(next); return next;
+  });
+  const markAllRead = () => setReadIds(() => {
+    const next = new Set(NOTIFICATIONS_DOCTOR.map(n => n.id)); persist(next); return next;
+  });
+  const unread = NOTIFICATIONS_DOCTOR.filter(n => !isRead(n)).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -1132,22 +1201,25 @@ const DoctorNotifications = () => {
         actions={unread > 0 && <Btn variant="ghost" size="sm" onClick={markAllRead}>Mark all read</Btn>} />
       <PageContent>
         <Card padding="0" style={{ maxWidth: 680 }}>
-          {notifs.map(n => (
-            <div key={n.id} onClick={() => setNotifs(ns => ns.map(x => x.id === n.id ? { ...x, read: true } : x))} style={{
+          {NOTIFICATIONS_DOCTOR.map(n => {
+            const read = isRead(n);
+            return (
+            <div key={n.id} onClick={() => markRead(n.id)} style={{
               display: 'flex', gap: 14, padding: '16px 20px', borderBottom: '1px solid var(--border)',
-              background: n.read ? 'transparent' : 'var(--primary-light)', cursor: 'pointer',
+              background: read ? 'transparent' : 'var(--primary-light)', cursor: 'pointer',
             }}>
               <NotifIcon type={n.type} />
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span style={{ fontSize: 14, fontWeight: n.read ? 500 : 700, color: 'var(--text)' }}>{n.title}</span>
+                  <span style={{ fontSize: 14, fontWeight: read ? 500 : 700, color: 'var(--text)' }}>{n.title}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{n.time}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>{n.message}</div>
               </div>
-              {!n.read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)', flexShrink: 0, marginTop: 6 }} />}
+              {!read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)', flexShrink: 0, marginTop: 6 }} />}
             </div>
-          ))}
+            );
+          })}
         </Card>
       </PageContent>
     </div>

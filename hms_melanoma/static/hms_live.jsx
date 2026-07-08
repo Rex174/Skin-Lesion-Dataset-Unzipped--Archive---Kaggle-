@@ -576,10 +576,106 @@ function simulatePrediction(patient, localization) {
   };
 }
 
+/* ═══════════════════════════════════════════════════════════
+   REPORT GENERATOR — builds a clean, print-ready HTML report
+   for one melanoma analysis and opens it in a new tab with the
+   print dialog (Save as PDF). Fully client-side so it always
+   works, and always includes the clinical notes (or "None").
+═══════════════════════════════════════════════════════════ */
+function downloadAnalysisReport(patient, analysis, notes) {
+  const pid = patient && /^\d+$/.test(String(patient.id)) ? 'P' + String(patient.id).padStart(3, '0') : (patient?.id || '—');
+  const pct = v => (v == null ? '—' : (v <= 1 ? (v * 100) : v).toFixed(1) + '%');
+  const riskLabel = { high: 'High Risk', medium: 'Moderate', moderate: 'Moderate', low: 'Low Risk' }[analysis.riskLevel] || analysis.riskLevel || '—';
+  const riskColor = { high: '#C0453B', medium: '#D9A441', moderate: '#D9A441', low: '#3E7C5A' }[analysis.riskLevel] || '#555';
+  const labels = (typeof DX_LABELS !== 'undefined') ? DX_LABELS : {};
+  const scores = analysis.scores || {};
+  const scoreRows = Object.keys(scores).length
+    ? (typeof DX_ORDER !== 'undefined' ? DX_ORDER : Object.keys(scores))
+        .filter(k => scores[k] != null)
+        .map(k => {
+          const v = scores[k];
+          const val = v <= 1 ? v * 100 : v;
+          const main = (labels[k] || k) === analysis.dxLabel || k === analysis.dx;
+          return `<tr${main ? ' style="font-weight:700;background:#FCEEE8"' : ''}>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee">${labels[k] || k}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${val.toFixed(1)}%</td></tr>`;
+        }).join('')
+    : '';
+  const cleanNotes = (notes && String(notes).trim()) ? String(notes).trim() : 'None';
+  const eodBlock = (analysis.eodAxes && analysis.eodAxes.length)
+    ? `<div class="sec"><h3>Fairness (Equal Opportunity Difference)</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+        ${analysis.eodAxes.map(a => `<tr>
+          <td style="padding:5px 10px;border-bottom:1px solid #eee">${a.axisLabel} · ${a.subgroup}</td>
+          <td style="padding:5px 10px;border-bottom:1px solid #eee;text-align:right">baseline ${a.baseline.toFixed(3)} → deployed ${a.enhanced.toFixed(3)} (−${a.reduction}%)</td>
+        </tr>`).join('')}
+        </table></div>` : '';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Melanoma Detection Report — ${patient?.name || ''}</title>
+  <style>
+    *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#222;margin:0;padding:40px;max-width:800px;margin:0 auto}
+    .hd{display:flex;align-items:center;gap:12px;border-bottom:3px solid #C0563E;padding-bottom:14px;margin-bottom:22px}
+    .logo{width:40px;height:40px;border-radius:10px;background:#C0563E;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
+    h1{font-size:19px;margin:0} .sub{color:#777;font-size:12px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;margin:14px 0}
+    .f{font-size:13px;padding:5px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between}
+    .f span:first-child{color:#888} .sec{margin:22px 0} h3{font-size:14px;margin:0 0 8px;color:#C0563E}
+    .big{font-size:26px;font-weight:800} .risk{display:inline-block;padding:3px 12px;border-radius:20px;color:#fff;font-size:12px;font-weight:700}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    .notes{background:#F7F3F0;border:1px solid #e6ddd6;border-radius:8px;padding:12px 14px;font-size:13px;white-space:pre-wrap}
+    .ft{margin-top:30px;border-top:1px solid #eee;padding-top:12px;font-size:11px;color:#999;text-align:center}
+    @media print{body{padding:0}}
+  </style></head><body>
+    <div class="hd"><div class="logo">M</div><div><h1>MelanoScan HMS — Melanoma Detection Report</h1>
+      <div class="sub">AI-assisted dermoscopic analysis · Model E (Full Framework, deployed)</div></div></div>
+
+    <div class="grid">
+      <div class="f"><span>Patient</span><b>${patient?.name || '—'}</b></div>
+      <div class="f"><span>Patient ID</span><b>${pid}</b></div>
+      <div class="f"><span>Age / Sex</span><b>${patient?.age ?? '—'} / ${patient?.sex || '—'}</b></div>
+      <div class="f"><span>Lesion location</span><b>${analysis.localization || patient?.localization || '—'}</b></div>
+      <div class="f"><span>Analysis date</span><b>${analysis.date || new Date().toISOString().slice(0,10)}</b></div>
+      <div class="f"><span>Model used</span><b>Model E — Full Framework</b></div>
+    </div>
+
+    <div class="sec"><h3>Result</h3>
+      <div style="display:flex;align-items:center;gap:20px">
+        <div><div class="sub">Predicted diagnosis</div><div class="big">${analysis.dxLabel || '—'}</div></div>
+        <div><div class="sub">Confidence</div><div class="big" style="color:#C0563E">${pct(analysis.confidence)}</div></div>
+        <div><div class="sub">Risk</div><div class="risk" style="background:${riskColor}">${riskLabel}</div></div>
+      </div>
+    </div>
+
+    ${scoreRows ? `<div class="sec"><h3>Probability by class</h3><table>${scoreRows}</table></div>` : ''}
+
+    <div class="sec"><h3>Clinical recommendation</h3>
+      <div style="font-size:13px;line-height:1.6">${analysis.recommendation || '—'}</div></div>
+
+    <div class="sec"><h3>Clinical notes</h3><div class="notes">${cleanNotes.replace(/</g,'&lt;')}</div></div>
+
+    ${eodBlock}
+
+    <div class="ft">Generated ${new Date().toLocaleString()} · MelanoScan HMS · This AI-assisted report supports, and does not replace, clinical judgement.</div>
+    <script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script>
+  </body></html>`;
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
+  else {
+    // Popup blocked → download as an HTML file instead
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `MelanoScan_Report_${pid}_${(analysis.date || '').replace(/-/g,'') || Date.now()}.html`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+}
+
 Object.assign(window, {
   MODEL_REGISTRY, EOD_BY_AXIS, eodForPatient, ageGroupOf, locZoneOf, AGE_GROUP_LABEL,
   ModelsApi, LiveSim, ClinicStore, useClinic, AppointmentApi, useAppointments, useLive, useSim, AnimatedNumber, LiveBadge,
-  simulatePrediction,
+  simulatePrediction, downloadAnalysisReport,
 });
 
 /* ═══════════════════════════════════════════════════════════
