@@ -584,11 +584,48 @@ def doctor_patients():
             "diagnosis": p.known_diagnosis or "",
             "bloodType": p.blood_type, "allergies": p.allergies,
             "email": p.email, "phone": p.contact_number,
+            "address": p.address,
             "notes": p.clinical_notes,
             "lastVisit": latest.timestamp.strftime("%Y-%m-%d") if latest else None,
             "riskLevel": risk,
         })
     return _ok(patients)
+
+
+@api_bp.route("/doctor/patients/<int:patient_id>/record")
+@login_required
+def doctor_patient_record(patient_id):
+    """Live detection history + appointments for one patient (doctor view)."""
+    if session.get("role") != "doctor":
+        return _err("Forbidden", 403)
+    doctor = DoctorProfile.query.filter_by(user_id=session["user_id"]).first_or_404()
+    patient = Patient.query.get_or_404(patient_id)
+    if patient.assigned_doctor_id != doctor.id:
+        return _err("Forbidden", 403)
+
+    RECO = {
+        "mel":   "Immediate excisional biopsy recommended. Urgent referral to surgical oncology.",
+        "bcc":   "Surgical excision recommended. Refer to surgical oncology for excision margins.",
+        "akiec": "Topical therapy or cryotherapy recommended. Regular monitoring required.",
+        "nv":    "Benign lesion confirmed. Continue routine annual dermoscopic monitoring.",
+        "bkl":   "Benign keratosis. No treatment necessary. Reassure patient.",
+        "df":    "Benign dermatofibroma confirmed. No intervention required. Patient reassured.",
+        "vasc":  "Vascular lesion noted. Dermatologist review recommended.",
+    }
+    detections = []
+    for c in MelanomaCheck.query.filter_by(patient_id=patient.id)\
+              .order_by(MelanomaCheck.timestamp.desc()).all():
+        risk = "medium" if c.risk_level == "moderate" else c.risk_level
+        detections.append({
+            "id": c.id, "date": c.timestamp.strftime("%Y-%m-%d"),
+            "dxLabel": c.predicted_label, "riskLevel": risk,
+            "confidence": c.confidence_score,
+            "recommendation": RECO.get(c.predicted_class, "Consult dermatologist."),
+        })
+    appointments = [a.to_dict() for a in Appointment.query.filter_by(patient_id=patient.id)
+                    .order_by(Appointment.date.desc(), Appointment.time.desc()).all()]
+    return _ok({"detections": detections, "appointments": appointments})
+
 
 
 @api_bp.route("/doctor/fairness-metrics")
