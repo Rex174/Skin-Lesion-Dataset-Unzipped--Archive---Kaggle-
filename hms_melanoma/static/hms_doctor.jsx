@@ -32,7 +32,7 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
 
         {/* Stats — live */}
         <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-          <StatCard icon="users"         label="Total Patients"  value={<AnimatedNumber value={totalPatients} />} sub="Under your care" trend={12} />
+          <StatCard icon="users"         label="Total Patients"  value={<AnimatedNumber value={totalPatients} />} sub="Under your care" />
           <StatCard icon="scan"          label="Analyses Today"  value={<AnimatedNumber value={analysesToday} />} sub="Updating in real time" />
           <StatCard icon="calendar"      label="Upcoming Appts"  value={<AnimatedNumber value={upcomingCount} />} sub="Next: 09:00 today" />
           <StatCard icon="alertTriangle" label="High-Risk Cases" value={<AnimatedNumber value={highRiskCount} />} sub="Requires immediate action" iconColor="var(--danger)" />
@@ -219,6 +219,8 @@ const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }
 ════════════════════════════════════════ */
 
 const DoctorDetection = ({ detectionPatientId }) => {
+  const clinic = useClinic();                 // live DB patients (numeric ids) when online
+  const patients = clinic.patients || [];
   const [selectedPid,   setSelectedPid]   = React.useState(detectionPatientId || '');
   const [localization,  setLocalization]  = React.useState('back');
   const runCompare = false; // Detection always uses ONLY the deployed best model (Enhanced v2)
@@ -277,16 +279,35 @@ const DoctorDetection = ({ detectionPatientId }) => {
       const dbId = patient && String(patient.id).match(/^\d+$/) ? patient.id : '';
       fd.append('patientDbId', dbId);
 
-      const resp = await fetch('/api/doctor/melanoma-check', {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: fd,
-      });
+      // Distinguish "server unreachable" (→ offline demo) from "server replied
+      // with an error" (→ show the real reason, don't mask it as demo).
+      let resp;
+      try {
+        resp = await fetch('/api/doctor/melanoma-check', {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: fd,
+        });
+      } catch (netErr) {
+        // Truly could not reach Flask → simulated fallback for offline demos
+        clearInterval(iv); setProgress(100);
+        const sim = simulatePrediction(patient, localization);
+        setTimeout(() => {
+          const rE = mapResult(sim);
+          setResultE(rE); setResultB(null); setStep('result');
+          ClinicStore.recordAnalysis({
+            patientId: selectedPid, patientName: patient?.name,
+            dx: rE.dx, dxLabel: rE.dxLabel, confidence: rE.confidence, riskLevel: rE.riskLevel,
+          });
+        }, 300);
+        return;
+      }
+
+      // Server responded — surface real HTTP/validation errors
       if (!resp.ok) {
         const errJson = await resp.json().catch(() => ({}));
         throw new Error(errJson.error || `Server error ${resp.status}`);
       }
-      
       const json = await resp.json();
       if (!json.ok) throw new Error(json.error || 'Unknown error');
       const data = json.data;
@@ -310,25 +331,17 @@ const DoctorDetection = ({ detectionPatientId }) => {
       }, 300);
 
     } catch (err) {
-      // Backend unreachable (e.g. Flask/TensorFlow not running) — fall back to a
-      // simulated result so the demo still works offline. Real results are shown
-      // whenever the backend is reachable.
+      // Reachable server but the request failed (400/500/etc.) — show the real
+      // reason instead of a misleading "demo" result.
       clearInterval(iv); setProgress(100);
-      const sim = simulatePrediction(patient, localization);
-      setTimeout(() => {
-        const rE = mapResult(sim);
-        setResultE(rE); setResultB(null); setStep('result');
-        ClinicStore.recordAnalysis({
-          patientId: selectedPid, patientName: patient?.name,
-          dx: rE.dx, dxLabel: rE.dxLabel, confidence: rE.confidence, riskLevel: rE.riskLevel,
-        });
-      }, 300);
+      setErrorMsg(err.message || 'Analysis failed. Please try again.');
+      setStep('error');
     }
   };
 
   const reset = () => { setStep('upload'); setFileUrl(null); setFileObj(null); setResultE(null); setResultB(null); setProgress(0); setNotes(''); };
 
-  const patient = PATIENTS.find(p => p.id === selectedPid);
+  const patient = patients.find(p => String(p.id) === String(selectedPid));
 
   // Clinical recommendations by class
   const getReco = (dx, risk) => ({
@@ -470,7 +483,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
                 fontSize: 14, color: 'var(--text)', background: 'var(--surface)', fontFamily: 'inherit', outline: 'none',
               }}>
                 <option value="">— Select patient —</option>
-                {PATIENTS.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+                {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
               {patient && (
                 <div style={{ marginTop: 14, padding: 14, background: 'var(--surface-2)', borderRadius: 9 }}>
