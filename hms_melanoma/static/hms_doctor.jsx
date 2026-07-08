@@ -171,7 +171,7 @@ const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
-                {['Patient','Age / Sex','Skin Type','Localization','Last Visit','Risk','Actions'].map(h => (
+                {['Patient','Age / Sex','Localization','Last Visit','Risk','Actions'].map(h => (
                   <th key={h} style={{ padding: '11px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -184,24 +184,18 @@ const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }
                       <Avatar name={p.name} size={32} />
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.id}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{/^\d+$/.test(String(p.id)) ? 'P' + String(p.id).padStart(3, '0') : p.id}</div>
                       </div>
                     </div>
                   </td>
                   <td style={{ padding: '13px 16px', fontSize: 13, color: 'var(--text)' }}>{p.age} / {p.sex}</td>
-                  <td style={{ padding: '13px 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', background: skinTypeColor(p.skinType), border: '1.5px solid var(--border)' }} />
-                      <span style={{ fontSize: 13 }}>Type {p.skinType}</span>
-                    </div>
-                  </td>
                   <td style={{ padding: '13px 16px', fontSize: 13, color: 'var(--text)', textTransform: 'capitalize' }}>{p.localization}</td>
                   <td style={{ padding: '13px 16px', fontSize: 13, color: 'var(--text-muted)' }}>{p.lastVisit}</td>
                   <td style={{ padding: '13px 16px' }}><RiskBadge level={p.riskLevel} /></td>
                   <td style={{ padding: '13px 16px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <Btn variant="secondary" size="sm" icon="eye" onClick={() => { setSelectedPatientId(ClinicStore.demoIdForName(p.name) || p.id); setPage('record'); }}>View</Btn>
-                      <Btn variant="primary"   size="sm" icon="scan" onClick={() => { setDetectionPatientId(ClinicStore.demoIdForName(p.name) || p.id); setPage('detection'); }}>Analyze</Btn>
+                      <Btn variant="secondary" size="sm" icon="eye" onClick={() => { setSelectedPatientId(p.id); setPage('record'); }}>View</Btn>
+                      <Btn variant="primary"   size="sm" icon="scan" onClick={() => { setDetectionPatientId(p.id); setPage('detection'); }}>Analyze</Btn>
                     </div>
                   </td>
                 </tr>
@@ -708,11 +702,36 @@ const DoctorDetection = ({ detectionPatientId }) => {
    DOCTOR PATIENT RECORD
 ════════════════════════════════════════ */
 const DoctorRecord = ({ selectedPatientId, setPage, setDetectionPatientId }) => {
-  const patient = PATIENTS.find(p => p.id === selectedPatientId) || PATIENTS[0];
-  const detections = DETECTIONS.filter(d => d.patientId === patient.id);
-  const appointments = APPOINTMENTS.filter(a => a.patientId === patient.id);
+  const clinic = useClinic();
+  const isDbId = /^\d+$/.test(String(selectedPatientId));
+  // Patient: prefer the live DB list, fall back to the demo cohort
+  const patient = (clinic.patients || []).find(p => String(p.id) === String(selectedPatientId))
+    || PATIENTS.find(p => p.id === selectedPatientId) || PATIENTS[0];
+
+  // Detection history + appointments — live from the DB when we have a numeric id,
+  // else the demo arrays. Polls so new analyses / appointments appear automatically.
+  const [live, setLive] = useState({ detections: null, appointments: null });
+  useEffect(() => {
+    if (!isDbId) { setLive({ detections: null, appointments: null }); return; }
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await apiFetch('/api/doctor/patients/' + selectedPatientId + '/record');
+        const d = r.data || r;
+        if (alive) setLive({ detections: d.detections || [], appointments: d.appointments || [] });
+      } catch (e) { if (alive) setLive({ detections: null, appointments: null }); }
+    };
+    load();
+    const id = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(id); };
+  }, [selectedPatientId, isDbId]);
+
+  const detections   = live.detections   != null ? live.detections   : DETECTIONS.filter(d => d.patientId === patient.id);
+  const appointments = live.appointments != null ? live.appointments : APPOINTMENTS.filter(a => a.patientId === patient.id);
   const [editNotes, setEditNotes] = useState(false);
   const [notes, setNotes] = useState(patient.notes);
+  useEffect(() => { setNotes(patient.notes); }, [patient.id]);
+  const displayId = /^\d+$/.test(String(patient.id)) ? 'P' + String(patient.id).padStart(3, '0') : patient.id;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -731,7 +750,7 @@ const DoctorRecord = ({ selectedPatientId, setPage, setDetectionPatientId }) => 
             <Card style={{ textAlign: 'center' }} padding="24px">
               <Avatar name={patient.name} size={64} />
               <div style={{ marginTop: 14, fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>{patient.name}</div>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>{patient.id}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>{displayId}</div>
               <RiskBadge level={patient.riskLevel} />
             </Card>
 
