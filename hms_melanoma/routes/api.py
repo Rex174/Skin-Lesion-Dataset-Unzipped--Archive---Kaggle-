@@ -616,10 +616,18 @@ def doctor_patient_record(patient_id):
     for c in MelanomaCheck.query.filter_by(patient_id=patient.id)\
               .order_by(MelanomaCheck.timestamp.desc()).all():
         risk = "medium" if c.risk_level == "moderate" else c.risk_level
+        try:
+            scores = json.loads(c.all_probabilities) if c.all_probabilities else {}
+        except Exception:
+            scores = {}
         detections.append({
             "id": c.id, "date": c.timestamp.strftime("%Y-%m-%d"),
-            "dxLabel": c.predicted_label, "riskLevel": risk,
+            "dx": c.predicted_class, "dxLabel": c.predicted_label, "riskLevel": risk,
             "confidence": c.confidence_score,
+            "scores": scores,
+            "notes": c.notes or "",
+            "modelUsed": c.model_used,
+            "fairnessNote": c.fairness_note,
             "recommendation": RECO.get(c.predicted_class, "Consult dermatologist."),
         })
     appointments = [a.to_dict() for a in Appointment.query.filter_by(patient_id=patient.id)
