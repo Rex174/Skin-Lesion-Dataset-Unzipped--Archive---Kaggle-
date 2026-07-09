@@ -884,6 +884,18 @@ def messages_post():
     return _ok(msg.to_dict())
 
 
+@api_bp.route("/messages/<int:message_id>", methods=["DELETE"])
+@login_required
+def messages_delete(message_id):
+    """Delete a message. Only the sender may delete their own message."""
+    msg = Message.query.get_or_404(message_id)
+    if msg.sender_role != session.get("role") or msg.sender_id != session.get("user_id"):
+        return _err("You can only delete your own messages", 403)
+    db.session.delete(msg)
+    db.session.commit()
+    return _ok({"deleted": message_id})
+
+
 @api_bp.route("/messages/threads")
 @login_required
 def messages_threads():
