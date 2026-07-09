@@ -1030,6 +1030,29 @@ const DoctorAnalytics = () => {
     4000
   );
 
+  // Live cohort/scan aggregates from the backend (fall back to dataset demo data)
+  const hasLive = liveA && Array.isArray(liveA.dxDistribution);
+  const liveDx        = hasLive && liveA.dxDistribution.length      ? liveA.dxDistribution      : null;
+  const liveLoc       = hasLive && liveA.locationDistribution.length ? liveA.locationDistribution : null;
+  const liveAge       = hasLive && liveA.ageDistribution            ? liveA.ageDistribution     : null;
+  const liveSex       = hasLive && liveA.sexDistribution            ? liveA.sexDistribution     : null;
+  const liveRisk      = hasLive && liveA.riskOutcome                ? liveA.riskOutcome         : null;
+  const liveTrend     = hasLive && liveA.analysesTrend && liveA.analysesTrend.length ? liveA.analysesTrend : null;
+  const totalScans    = liveA?.imagesEvaluated ?? 0;
+
+  const dxData    = liveDx  || dxDistribution;
+  const dxTotal   = dxData.reduce((s, d) => s + d.value, 0) || 0;
+  const locData   = liveLoc || cohort.localization;
+  const ageData   = liveAge || cohort.age;
+  const sexData   = liveSex || cohort.sex;
+  const riskData  = liveRisk || cohort.riskOutcome;
+  const trendData = liveTrend || cohort.analysesTrend;
+  const patientTotal = liveA?.totalPatients ?? sexData.reduce((s, d) => s + d.value, 0);
+  const sexTotal  = sexData.reduce((s, d) => s + d.value, 0);
+  const riskTotal = riskData.reduce((s, d) => s + d.value, 0);
+  const trendPct  = (trendData.length >= 2 && trendData[0].value > 0)
+    ? Math.round((trendData.at(-1).value / trendData[0].value - 1) * 100) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <TopBar title="Analytics & Fairness Metrics" subtitle="HAM10000 · Model E (Full Framework, deployed) · live bias audit"
@@ -1041,7 +1064,7 @@ const DoctorAnalytics = () => {
             { icon:'shield',     label:'Overall Accuracy',   value:<AnimatedNumber value={(liveA?.overallAccuracy ?? 0.7327) * 100} decimals={1} suffix="%" />, sub:'Deployed model (E)',    variant:'info'    },
             { icon:'activity',   label:'Macro AUC',          value:<AnimatedNumber value={liveA?.macroAuc ?? 0.9276} decimals={3} />,                            sub:'Discrimination',        variant:'success' },
             { icon:'trendingUp', label:'Mean EOD',           value:<AnimatedNumber value={liveA?.meanEOD ?? 0.130} decimals={3} />,                              sub:'age · sex · location',  variant:'success' },
-            { icon:'layers',     label:'Images Evaluated',   value:<AnimatedNumber value={liveA?.imagesEvaluated ?? 1503} />,                                    sub:'Updating in real time', variant:'info'    },
+            { icon:'layers',     label:'Images Evaluated',   value:<AnimatedNumber value={totalScans} />,                                                        sub:'Total scans performed', variant:'info'    },
           ].map(m => (
             <Card key={m.label} style={{ flex: 1, minWidth: 160 }}>
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -1094,21 +1117,25 @@ const DoctorAnalytics = () => {
             <GroupedBarChart data={melTprBySex} height={180} max={0.6} asPercent decimals={2} />
           </Card>
 
-          {/* DX distribution */}
+          {/* DX distribution — live from analyses performed */}
           <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>HAM10000 Class Distribution</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>10,015 dermoscopic images — severe class imbalance</div>
-            {dxDistribution.map(d => (
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Skin Lesion Class Distribution</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{dxTotal.toLocaleString()} analyses performed — grows as scans are done</div>
+            {dxData.map(d => {
+              const pct = dxTotal ? d.value / dxTotal : 0;
+              return (
               <div key={d.label} style={{ marginBottom: 9 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
                   <span style={{ color: 'var(--text)' }}>{d.label}</span>
-                  <span style={{ fontWeight: 600 }}>{d.value.toLocaleString()} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({(d.pct * 100).toFixed(1)}%)</span></span>
+                  <span style={{ fontWeight: 600 }}>{d.value.toLocaleString()} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({(pct * 100).toFixed(1)}%)</span></span>
                 </div>
                 <div style={{ height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${d.pct * 100}%`, background: 'var(--accent)', borderRadius: 4 }} />
+                  <div style={{ height: '100%', width: `${pct * 100}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width 0.6s ease' }} />
                 </div>
               </div>
-            ))}
+              );
+            })}
+            {dxTotal === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '8px 0' }}>No analyses yet — run a detection to populate this chart.</div>}
           </Card>
         </div>
 
@@ -1123,32 +1150,31 @@ const DoctorAnalytics = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
           <Card>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Patient Age Distribution</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Cohort skews middle-aged and older — key for melanoma screening</div>
-            <BarChart data={cohort.age} height={190} colorFn={() => 'var(--secondary)'} />
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Ages of patients currently in the system</div>
+            <BarChart data={ageData} height={190} colorFn={() => 'var(--secondary)'} />
           </Card>
           <Card>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Lesion Location Diversity</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Anatomical site of the analysed skin lesions</div>
-            <HBarChart data={cohort.localization} color="var(--primary)" />
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Anatomical site of analyses performed — grows as scans are done</div>
+            {locData.length
+              ? <HBarChart data={locData} color="var(--primary)" />
+              : <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>No analyses yet.</div>}
           </Card>
         </div>
 
-        {/* Row 2: Sex + Confirmation method + Risk outcome donuts */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 20 }}>
+        {/* Row 2: Sex + Risk outcome donuts */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
           <Card>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Patient Sex</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Gender balance of the cohort</div>
-            <DonutChart data={cohort.sex} centerLabel="10k" centerSub="patients" />
-          </Card>
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Diagnosis Confirmation</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>How each ground-truth label was verified</div>
-            <DonutChart data={cohort.dxType} centerLabel={`${Math.round(cohort.dxType[0].value / cohort.dxType.reduce((s,d)=>s+d.value,0) * 100)}%`} centerSub="histo." />
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Gender distribution of current patients</div>
+            <DonutChart data={sexData} centerLabel={String(patientTotal)} centerSub="patients" />
           </Card>
           <Card>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Risk Outcome Mix</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Risk level of analysed lesions</div>
-            <DonutChart data={cohort.riskOutcome} centerLabel={`${(cohort.riskOutcome[0].value / cohort.riskOutcome.reduce((s,d)=>s+d.value,0) * 100).toFixed(0)}%`} centerSub="high" />
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Current risk level of patients in the system</div>
+            <DonutChart data={riskData}
+              centerLabel={`${riskTotal ? (riskData[0].value / riskTotal * 100).toFixed(0) : 0}%`}
+              centerSub="high" />
           </Card>
         </div>
 
@@ -1159,15 +1185,17 @@ const DoctorAnalytics = () => {
               <div style={{ fontWeight: 700, fontSize: 15 }}>Skin-Lesion Analyses Performed</div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Melanoma detection scans conducted in the HMS, per month</div>
             </div>
-            <Badge variant="success">▲ {Math.round((cohort.analysesTrend.at(-1).value / cohort.analysesTrend[0].value - 1) * 100)}% since Jan</Badge>
+            {trendPct != null && <Badge variant="success">▲ {trendPct}% since {trendData[0].label}</Badge>}
           </div>
           <div style={{ marginTop: 8 }}>
-            <AreaTrend data={cohort.analysesTrend} height={170} color="var(--primary)" />
+            {trendData.length
+              ? <AreaTrend data={trendData} height={170} color="var(--primary)" />
+              : <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '50px 0' }}>No analyses recorded yet.</div>}
           </div>
         </Card>
 
         <div style={{ marginTop: 14, fontSize: 11, color: 'var(--text-light)', lineHeight: 1.6 }}>
-          Cohort diversity charts are grounded in HAM10000 dataset metadata (10,015 dermoscopic images). Analyses-performed reflects MelanoScan HMS clinical activity.
+          Cohort and analysis charts reflect live MelanoScan HMS data — patients registered and melanoma-detection scans performed in the system.
         </div>
       </PageContent>
     </div>
