@@ -755,6 +755,18 @@ const MessageStore = (function () {
       return msg;
     },
 
+    async deleteMessage(cid, messageId) {
+      if (online) {
+        try { await apiFetch('/api/messages/' + messageId, { method: 'DELETE' }); emit(); return; }
+        catch { /* fall through to localStorage */ }
+      }
+      const all = readLS();
+      if (all[cid]) {
+        all[cid] = all[cid].filter(m => m && String(m.id) !== String(messageId));
+        writeLS(all);
+      }
+    },
+
     /* Doctor conversation list — one row per patient */
     async threads() {
       if (online) {
@@ -886,6 +898,14 @@ const ChatThread = ({ cid, role, otherName, otherSubtitle, emptyHint }) => {
     refresh();
   };
 
+  const [hoverId, setHoverId] = useStateLive(null);
+  const deleteMsg = async (m) => {
+    // Optimistic removal so it feels instant, then confirm with the store
+    setMsgs(list => list.filter(x => x.id !== m.id));
+    await MessageStore.deleteMessage(cid, m.id);
+    refresh();
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* Thread header */}
@@ -909,8 +929,23 @@ const ChatThread = ({ cid, role, otherName, otherSubtitle, emptyHint }) => {
         {msgs.map(m => {
           const isMe = m.from === role;
           return (
-            <div key={m.id} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', gap: 10, alignItems: 'flex-end' }}>
+            <div key={m.id}
+              onMouseEnter={() => setHoverId(m.id)} onMouseLeave={() => setHoverId(h => h === m.id ? null : h)}
+              style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', gap: 8, alignItems: 'flex-end' }}>
               {!isMe && <Avatar name={otherName} size={32} />}
+              {isMe && (
+                <button onClick={() => deleteMsg(m)} title="Delete message"
+                  style={{
+                    width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'transparent',
+                    color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0, opacity: hoverId === m.id ? 1 : 0, transition: 'opacity 0.15s, background 0.15s',
+                    marginBottom: 2,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--danger-bg)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <Icon name="trash" size={14} />
+                </button>
+              )}
               <div style={{ maxWidth: '68%' }}>
                 <div style={{
                   padding: '11px 15px', borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
