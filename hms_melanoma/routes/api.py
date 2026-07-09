@@ -364,6 +364,7 @@ def doctor_melanoma_check_direct():
                 predicted_label  = result_enhanced["predicted_label"],
                 confidence_score = result_enhanced["confidence_score"],
                 risk_level       = result_enhanced["risk_level"],
+                localization     = localization,
                 all_probabilities= json.dumps(result_enhanced["all_probabilities"]),
                 fairness_note    = result_enhanced.get("fairness_note"),
                 performed_by     = "doctor",
@@ -435,6 +436,7 @@ def doctor_melanoma_check(patient_id):
             predicted_label=result_enhanced["predicted_label"],
             confidence_score=result_enhanced["confidence_score"],
             risk_level=result_enhanced["risk_level"],
+            localization=localization,
             all_probabilities=json.dumps(result_enhanced["all_probabilities"]),
             fairness_note=result_enhanced.get("fairness_note"),
             performed_by="doctor",
@@ -501,6 +503,7 @@ def patient_melanoma_check():
         predicted_label=result["predicted_label"],
         confidence_score=result["confidence_score"],
         risk_level=result["risk_level"],
+        localization=localization,
         all_probabilities=json.dumps(result["all_probabilities"]),
         fairness_note=result.get("fairness_note"),
         performed_by="patient",
@@ -781,9 +784,14 @@ def models_comparison():
 def doctor_analytics_live():
     if session.get("role") != "doctor":
         return _err("Forbidden", 403)
+    doctor = DoctorProfile.query.filter_by(user_id=session["user_id"]).first()
+    patients = list(doctor.patients) if doctor else []
+    patient_ids = [p.id for p in patients]
 
-    # Total melanoma checks performed across the system (grows in real time)
-    total_checks = MelanomaCheck.query.count()
+    # Total melanoma checks performed across this doctor's patients
+    checks = (MelanomaCheck.query.filter(MelanomaCheck.patient_id.in_(patient_ids)).all()
+              if patient_ids else [])
+    total_checks = len(checks)
 
     # Deployed-model (Model E) metrics from the real Phase-1 results
     res  = _load_results()
@@ -795,11 +803,96 @@ def doctor_analytics_live():
     axis_vals = [v for v in (age, sex, loc) if v is not None]
     mean_eod = round(sum(axis_vals) / len(axis_vals), 3) if axis_vals else 0.130
 
+    # ── Class distribution of ANALYSES performed (grows as scans are done) ──
+    DX_KEYS  = ["nv", "mel", "bkl", "bcc", "akiec", "vasc", "df"]
+    DX_LABEL = {"nv": "Nevi (nv)", "mel": "Melanoma (mel)", "bkl": "BKL", "bcc": "BCC",
+                "akiec": "AKIEC", "vasc": "VASC", "df": "DF"}
+    dx_counts = {k: 0 for k in DX_KEYS}
+    # ── Lesion-location distribution of ANALYSES ──
+    loc_counts = {}
+    # ── Analyses per month ──
+    month_counts = {}
+    # Map patient_id → localization (lives on Patient, not MelanomaCheck)
+    ploc = {p.id: (p.localization or "Unknown") for p in patients}
+    for c in checks:
+        if c.predicted_class in dx_counts:
+            dx_counts[c.predicted_class] += 1
+        lz = (getattr(c, "localization", None) or ploc.get(c.patient_id) or "Unknown").strip().title()
+        loc_counts[lz] = loc_counts.get(lz, 0) + 1
+        if c.timestamp:
+            mk = c.timestamp.strftime("%Y-%m")
+            month_counts[mk] = month_counts.get(mk, 0) + 1
+
+    dx_distribution = [
+        {"label": DX_LABEL[k], "value": dx_counts[k],
+         "pct": (dx_counts[k] / total_checks) if total_checks else 0}
+        for k in DX_KEYS
+    ]
+    location_distribution = [
+        {"label": k, "value": v}
+        for k, v in sorted(loc_counts.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+
+    # Analyses-per-month as an ordered series (last 6 months present, chronological)
+    MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    analyses_trend = [
+        {"label": MON[int(mk.split("-")[1]) - 1], "value": month_counts[mk]}
+        for mk in sorted(month_counts.keys())
+    ]
+
+    # ── Patient cohort: age distribution, sex, risk outcome ──
+    age_bands = [("0–19", 0, 19), ("20–39", 20, 39), ("40–59", 40, 59),
+                 ("60–79", 60, 79), ("80+", 80, 200)]
+    age_dist = {b[0]: 0 for b in age_bands}
+    sex_counts = {"Male": 0, "Female": 0, "Unknown": 0}
+    for p in patients:
+        a = p.age
+        if a is not None:
+            for label, lo, hi in age_bands:
+                if lo <= a <= hi:
+                    age_dist[label] += 1
+                    break
+        s = (p.sex or "").strip().lower()
+        if s == "male":
+            sex_counts["Male"] += 1
+        elif s == "female":
+            sex_counts["Female"] += 1
+        else:
+            sex_counts["Unknown"] += 1
+
+    # Risk outcome = latest check's risk per patient (falls back to none)
+    risk_counts = {"high": 0, "moderate": 0, "low": 0}
+    for p in patients:
+        latest = (MelanomaCheck.query.filter_by(patient_id=p.id)
+                  .order_by(MelanomaCheck.timestamp.desc()).first())
+        if latest and latest.risk_level in risk_counts:
+            risk_counts[latest.risk_level] += 1
+
+    age_distribution = [{"label": b[0], "value": age_dist[b[0]]} for b in age_bands]
+    sex_distribution = [
+        {"label": "Male",    "value": sex_counts["Male"],    "color": "#5B8DB8"},
+        {"label": "Female",  "value": sex_counts["Female"],  "color": "#C77B6A"},
+        {"label": "Unknown", "value": sex_counts["Unknown"], "color": "#B8B2AA"},
+    ]
+    risk_outcome = [
+        {"label": "High risk",     "value": risk_counts["high"],     "color": "#C0453B"},
+        {"label": "Moderate risk", "value": risk_counts["moderate"], "color": "#D9A441"},
+        {"label": "Low risk",      "value": risk_counts["low"],      "color": "#3E7C5A"},
+    ]
+
     return _ok({
         "overallAccuracy": acc,
         "macroAuc":        auc,
         "meanEOD":         mean_eod,
-        "imagesEvaluated": 1500 + total_checks,
+        "imagesEvaluated": total_checks,
+        "totalPatients":   len(patients),
+        "dxDistribution":       dx_distribution,
+        "locationDistribution": location_distribution,
+        "analysesTrend":        analyses_trend,
+        "ageDistribution":      age_distribution,
+        "sexDistribution":      sex_distribution,
+        "riskOutcome":          risk_outcome,
     })
 
 
