@@ -171,6 +171,7 @@ class MelanomaCheck(db.Model):
     predicted_label     = db.Column(db.String(60),  nullable=False)   # e.g. "Melanoma"
     confidence_score    = db.Column(db.Float,        nullable=False)   # 0.0 - 1.0
     risk_level          = db.Column(db.String(10),   nullable=False)   # "low" | "moderate" | "high"
+    localization        = db.Column(db.String(40))   # lesion site chosen for THIS scan
 
     # Full probability distribution (JSON string)
     all_probabilities   = db.Column(db.Text)   # JSON: {"mel": 0.82, "nv": 0.11, ...}
