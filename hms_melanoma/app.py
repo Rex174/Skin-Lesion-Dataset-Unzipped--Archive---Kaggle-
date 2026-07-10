@@ -70,29 +70,29 @@ DX_LABELS = {
 }
 
 # name, age, sex, skin_type, ita, localization, risk(high/moderate/low), dx,
-# phone, email, blood, allergies, last_visit, confidence, notes
+# phone, email, blood, allergies, last_visit, confidence, notes, address
 SEED_PATIENTS = [
-    ("Aisha Rahman",   34, "female", "IV",  -15, "back",            "high",     "mel",   "+60 12-345 6789", "aisha.r@email.com",   "A+",  "Penicillin",   "2026-04-15", 0.87, "Recent growth in lesion size. Referred from GP. Urgent biopsy advised."),
-    ("Tom Hendricks",  67, "male",   "II",   42, "face",            "low",      "nv",    "+60 11-234 5678", "tom.h@email.com",     "O+",  "None",         "2026-04-10", 0.92, "Routine monitoring of multiple benign nevi. Fair skin, high sun exposure."),
-    ("Maya Krishnan",  45, "female", "V",   -28, "upper extremity", "moderate", "bcc",   "+60 16-789 0123", "maya.k@email.com",    "B+",  "Sulfonamides", "2026-04-08", 0.79, "BCC on left forearm. Surgical excision scheduled next month."),
-    ("James O'Brien",  52, "male",   "I",    58, "scalp",           "moderate", "akiec", "+60 17-456 7890", "james.ob@email.com",  "AB-", "Aspirin",      "2026-04-05", 0.74, "Actinic keratosis on scalp. Extensive sun damage. Cryotherapy applied."),
-    ("Fatimah Idris",  28, "female", "VI",  -45, "trunk",           "high",     "mel",   "+60 13-567 8901", "fatimah.i@email.com", "O-",  "None",         "2026-04-18", 0.81, "Suspicious irregular lesion on trunk. High-risk result. Excisional biopsy pending."),
-    ("Lin Chen",       41, "male",   "III",  12, "lower extremity", "low",      "bkl",   "+60 14-678 9012", "lin.c@email.com",     "A-",  "Latex",        "2026-03-28", 0.88, "Seborrheic keratosis on lower leg. Reassured. Annual monitoring."),
-    ("Sarah Pearce",   19, "female", "II",   38, "back",            "low",      "nv",    "+60 18-789 0123", "sarah.p@email.com",   "B-",  "None",         "2026-04-12", 0.90, "Dysplastic nevus on upper back. Annual dermoscopic follow-up."),
-    ("Ahmed Al-Rashid",58, "male",   "IV",   -8, "face",            "low",      "df",    "+60 19-890 1234", "ahmed.ar@email.com",  "O+",  "NSAIDs",       "2026-04-01", 0.83, "Dermatofibroma on left cheek confirmed. No treatment required."),
+    ("Aisha Rahman",   34, "female", "IV",  -15, "back",            "high",     "mel",   "+60 12-345 6789", "aisha.r@email.com",   "A+",  "Penicillin",   "2026-04-15", 0.87, "Recent growth in lesion size. Referred from GP. Urgent biopsy advised.", "12 Jalan Ampang, 50450 Kuala Lumpur"),
+    ("Tom Hendricks",  67, "male",   "II",   42, "face",            "low",      "nv",    "+60 11-234 5678", "tom.h@email.com",     "O+",  "None",         "2026-04-10", 0.92, "Routine monitoring of multiple benign nevi. Fair skin, high sun exposure.", "8 Persiaran Gurney, 10250 Penang"),
+    ("Maya Krishnan",  45, "female", "V",   -28, "upper extremity", "moderate", "bcc",   "+60 16-789 0123", "maya.k@email.com",    "B+",  "Sulfonamides", "2026-04-08", 0.79, "BCC on left forearm. Surgical excision scheduled next month.", "45 Lorong Ampang, 68000 Ampang, Selangor"),
+    ("James O'Brien",  52, "male",   "I",    58, "scalp",           "moderate", "akiec", "+60 17-456 7890", "james.ob@email.com",  "AB-", "Aspirin",      "2026-04-05", 0.74, "Actinic keratosis on scalp. Extensive sun damage. Cryotherapy applied.", "3 Jalan Bukit Bintang, 55100 Kuala Lumpur"),
+    ("Fatimah Idris",  28, "female", "VI",  -45, "trunk",           "high",     "mel",   "+60 13-567 8901", "fatimah.i@email.com", "O-",  "None",         "2026-04-18", 0.81, "Suspicious irregular lesion on trunk. High-risk result. Excisional biopsy pending.", "27 Jalan Tun Razak, 50400 Kuala Lumpur"),
+    ("Lin Chen",       41, "male",   "III",  12, "lower extremity", "low",      "bkl",   "+60 14-678 9012", "lin.c@email.com",     "A-",  "Latex",        "2026-03-28", 0.88, "Seborrheic keratosis on lower leg. Reassured. Annual monitoring.", "19 Jalan SS2/24, 47300 Petaling Jaya, Selangor"),
+    ("Sarah Pearce",   19, "female", "II",   38, "back",            "low",      "nv",    "+60 18-789 0123", "sarah.p@email.com",   "B-",  "None",         "2026-04-12", 0.90, "Dysplastic nevus on upper back. Annual dermoscopic follow-up.", "6 Jalan Damansara, 60000 Kuala Lumpur"),
+    ("Ahmed Al-Rashid",58, "male",   "IV",   -8, "face",            "low",      "df",    "+60 19-890 1234", "ahmed.ar@email.com",  "O+",  "NSAIDs",       "2026-04-01", 0.83, "Dermatofibroma on left cheek confirmed. No treatment required.", "56 Damansara Heights, 50490 Kuala Lumpur"),
 ]
 
 
 # patient_index, date, time, duration, reason, status
 SEED_APPOINTMENTS = [
-    (0, "2026-04-22", "09:00", 30, "Biopsy Follow-up",       "scheduled"),
-    (4, "2026-04-22", "10:30", 45, "Biopsy Consultation",    "scheduled"),
-    (1, "2026-04-23", "11:00", 20, "Routine Monitoring",     "scheduled"),
-    (2, "2026-04-24", "14:00", 30, "Pre-surgery Consult",    "scheduled"),
+    (0, "2026-08-22", "09:00", 30, "Biopsy Follow-up",       "scheduled"),
+    (4, "2026-08-22", "10:30", 45, "Biopsy Consultation",    "scheduled"),
+    (1, "2026-08-23", "11:00", 20, "Routine Monitoring",     "scheduled"),
+    (2, "2026-08-24", "14:00", 30, "Pre-surgery Consult",    "scheduled"),
     (3, "2026-04-21", "09:30", 30, "Treatment Review",       "completed"),
     (6, "2026-04-20", "15:00", 20, "Annual Check-up",        "completed"),
-    (5, "2026-04-25", "09:00", 30, "New Lesion Assessment",  "scheduled"),
-    (7, "2026-04-28", "13:00", 20, "6-Month Follow-up",      "scheduled"),
+    (5, "2026-08-25", "09:00", 30, "New Lesion Assessment",  "scheduled"),
+    (7, "2026-08-28", "13:00", 20, "6-Month Follow-up",      "scheduled"),
 ]
 
 
@@ -130,7 +130,7 @@ def init_db(app):
         # ── 8 patients (login + profile + initial melanoma-check) ─────────────
         patient_ids = []
         for (name, age, sex, skin, ita, loc, risk, dx, phone, email,
-             blood, allergies, last_visit, conf, notes) in SEED_PATIENTS:
+             blood, allergies, last_visit, conf, notes, address) in SEED_PATIENTS:
 
             uname = _username(name)
             pu = User(username=uname, email=email, role="patient")
@@ -141,7 +141,7 @@ def init_db(app):
             patient = Patient(
                 user_id=pu.id, full_name=name,
                 date_of_birth=date(date.today().year - age, 1, 1),
-                sex=sex, contact_number=phone, email=email,
+                sex=sex, contact_number=phone, email=email, address=address,
                 skin_type=skin, ita=ita, localization=loc,
                 blood_type=blood, allergies=allergies,
                 known_diagnosis=dx, clinical_notes=notes,
