@@ -279,6 +279,30 @@ const ClinicStore = (function () {
 
     highRiskPatients() { return patients.filter(p => p.riskLevel === 'high'); },
 
+    /* Per-patient live views (used by the patient portal dashboard) */
+    analysesFor(patientId) {
+      return analyses.filter(a => a.patientId === patientId)
+        .slice().sort((a, b) => (b._ts || 0) - (a._ts || 0));
+    },
+    patientRecord(patientId) { return patients.find(p => p.id === patientId); },
+
+    /* Update a patient's demographic/contact details. Writes to the live
+       working copy AND the underlying PATIENTS record (which PATIENT_USER
+       and the doctor's record-page fallback both reference), then notifies
+       subscribers so the doctor portal reflects the change live. */
+    updatePatient(patientId, patch) {
+      const copy = patients.find(p => p.id === patientId);
+      if (copy) Object.assign(copy, patch);
+      if (typeof PATIENTS !== 'undefined') {
+        const src = PATIENTS.find(p => p.id === patientId);
+        if (src) Object.assign(src, patch);
+      }
+      if (window.PATIENT_USER && window.PATIENT_USER.id === patientId) {
+        Object.assign(window.PATIENT_USER, patch);
+      }
+      emit();
+    },
+
     /* Recover a demo patient id ('P00x') from a name — lets the live DB list
        (integer ids) still navigate to the demo-backed record/detection views. */
     demoIdForName(name) {
@@ -311,6 +335,14 @@ const ClinicStore = (function () {
       if (patient) {
         patient.lastVisit = todayISO();
         if (riskLevel === 'high') patient.riskLevel = 'high';
+      }
+      /* Raise a patient-facing alert so the dashboard's unread count updates */
+      if (window.PatientNotifStore && (window.PATIENT_USER || {}).id === patientId) {
+        window.PatientNotifStore.add({
+          type: riskLevel === 'high' ? 'alert' : 'result',
+          title: riskLevel === 'high' ? 'High-risk result flagged' : 'New scan result available',
+          message: `Your ${dxLabel} screening result is now available for review.`,
+        });
       }
       emit();
     },
@@ -363,10 +395,56 @@ function useClinic() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   APPOINTMENTS  — database-backed when Flask is running, demo
-   fallback offline. AppointmentApi hits the REST endpoints;
-   useAppointments(role) gives a live list + book/reschedule/cancel.
+   PatientNotifStore — reactive wrapper around NOTIFICATIONS_PATIENT
+   so the dashboard unread count and the Notifications page share
+   one source of truth. Clicking a notification read (or marking all
+   read) updates the badge everywhere; new scans push fresh alerts.
 ═══════════════════════════════════════════════════════════ */
+const PatientNotifStore = (function () {
+  let list = (typeof NOTIFICATIONS_PATIENT !== 'undefined' ? NOTIFICATIONS_PATIENT : []).map(n => ({ ...n }));
+  const subs = new Set();
+  const emit = () => subs.forEach(fn => fn());
+  return {
+    list() { return list; },
+    unreadCount() { return list.filter(n => !n.read).length; },
+    markRead(id) { const n = list.find(x => x.id === id); if (n && !n.read) { n.read = true; emit(); } },
+    markAllRead() {
+      let changed = false;
+      list.forEach(n => { if (!n.read) { n.read = true; changed = true; } });
+      if (changed) emit();
+    },
+    add(notif) {
+      list = [{ id: 'NP' + Date.now(), read: false, time: 'Just now', ...notif }, ...list];
+      emit();
+    },
+    subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
+  };
+})();
+window.PatientNotifStore = PatientNotifStore;
+
+/* usePatientClinic — live analyses + risk record for one patient.
+   Re-renders whenever ClinicStore changes (e.g. a new scan). */
+function usePatientClinic(patientId) {
+  const [, force] = useStateLive(0);
+  useEffectLive(() => {
+    const unsub = ClinicStore.subscribe(() => force(x => x + 1));
+    return unsub;
+  }, [patientId]);
+  return {
+    analyses: ClinicStore.analysesFor(patientId),
+    record: ClinicStore.patientRecord(patientId),
+  };
+}
+
+/* usePatientNotifs — reactive access to PatientNotifStore */
+function usePatientNotifs() {
+  const [, force] = useStateLive(0);
+  useEffectLive(() => {
+    const unsub = PatientNotifStore.subscribe(() => force(x => x + 1));
+    return unsub;
+  }, []);
+  return PatientNotifStore;
+}
 const AppointmentApi = {
   list:   () => apiFetch('/api/appointments'),
   book:   (payload) => apiFetch('/api/appointments', { method: 'POST', body: JSON.stringify(payload) }),
@@ -676,6 +754,7 @@ Object.assign(window, {
   MODEL_REGISTRY, EOD_BY_AXIS, eodForPatient, ageGroupOf, locZoneOf, AGE_GROUP_LABEL,
   ModelsApi, LiveSim, ClinicStore, useClinic, AppointmentApi, useAppointments, useLive, useSim, AnimatedNumber, LiveBadge,
   simulatePrediction, downloadAnalysisReport,
+  PatientNotifStore, usePatientClinic, usePatientNotifs,
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -880,6 +959,15 @@ const ChatThread = ({ cid, role, otherName, otherSubtitle, emptyHint }) => {
     const unsub = MessageStore.subscribeMessages(refresh);
     return unsub;
   }, [cid, refresh]);
+
+  // Prefill the composer with a pending template draft (e.g. "reschedule"
+  // deep-link from the patient dashboard), then consume it.
+  useEffectLive(() => {
+    if (role === 'patient' && window.__pendingMessageDraft) {
+      setText(window.__pendingMessageDraft);
+      window.__pendingMessageDraft = null;
+    }
+  }, [cid]);
 
   // Mark this conversation read whenever its messages change while open
   useEffectLive(() => {

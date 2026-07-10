@@ -318,7 +318,7 @@ const App = () => {
     switch (page) {
       case 'dashboard':     return <PatientDashboard setPage={setP} />;
       case 'profile':       return <PatientProfile />;
-      case 'detection':     return <PatientDetection />;
+      case 'detection':     return <PatientDetection setPage={setP} />;
       case 'appointments':  return <PatientAppointments />;
       case 'results':       return <PatientResults />;
       case 'messages':      return <PatientMessages />;

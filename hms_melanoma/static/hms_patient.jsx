@@ -6,12 +6,31 @@ const { useState, useRef, useEffect } = React;
 ════════════════════════════════════════ */
 const PatientDashboard = ({ setPage }) => {
   const pt = PATIENT_USER;
-  const myDetections  = DETECTIONS.filter(d => d.patientId === pt.id);
+  const { analyses, record } = usePatientClinic(pt.id);
+  const notifStore = usePatientNotifs();
+  const myDetections  = analyses;
   const apptState = useAppointments('patient');
   const myAppointments = apptState.list || [];
   const latest  = myDetections[0];
   const nextApt = myAppointments.find(a => a.status === 'scheduled');
-  const unread  = NOTIFICATIONS_PATIENT.filter(n => !n.read).length;
+  const unread  = notifStore.unreadCount();
+  const riskLevel = (record && record.riskLevel) || pt.riskLevel;
+
+  // Detections seeded from history don't carry a recommendation string.
+  const RECO = {
+    mel: 'Immediate excisional biopsy recommended. Urgent referral to surgical oncology.',
+    bcc: 'Surgical excision recommended. Consult with your dermatologist.',
+    akiec: 'Topical treatment or cryotherapy may be required. Book a follow-up.',
+    nv: 'Benign lesion detected. Continue annual dermoscopic monitoring.',
+    bkl: 'Benign keratosis detected. No immediate treatment required.',
+    df: 'Benign lesion confirmed. No intervention required.',
+    vasc: 'Vascular lesion noted. Dermatologist review recommended.',
+  };
+
+  const rescheduleAppt = () => {
+    window.__pendingMessageDraft = 'Hi doctor, I would like to reschedule my appointment';
+    setPage('messages');
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -41,7 +60,7 @@ const PatientDashboard = ({ setPage }) => {
           <StatCard icon="scan"     label="Total Scans"        value={myDetections.length}    sub="All-time analyses" />
           <StatCard icon="calendar" label="Upcoming Appt"      value={nextApt ? '1' : '0'}   sub={nextApt ? `${nextApt.date} at ${nextApt.time}` : 'None scheduled'} />
           <StatCard icon="bell"     label="Unread Alerts"      value={unread}                 sub="Tap to view" iconColor="var(--warning)" />
-          <StatCard icon="heart"    label="Risk Level"         value={pt.riskLevel === 'high' ? '⚠ High' : pt.riskLevel === 'medium' ? 'Moderate' : 'Low'} sub="Current assessment" iconColor={pt.riskLevel === 'high' ? 'var(--danger)' : 'var(--success)'} />
+          <StatCard icon="heart"    label="Risk Level"         value={riskLevel === 'high' ? '⚠ High' : riskLevel === 'medium' ? 'Moderate' : 'Low'} sub="Current assessment" iconColor={riskLevel === 'high' ? 'var(--danger)' : 'var(--success)'} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
@@ -61,7 +80,7 @@ const PatientDashboard = ({ setPage }) => {
               </div>
               {latest.riskLevel === 'high' && (
                 <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', borderRadius: 9, fontSize: 13, color: 'var(--danger)', fontWeight: 500 }}>
-                  ⚠ {latest.recommendation}
+                  ⚠ {latest.recommendation || RECO[latest.dx] || 'Please consult your dermatologist.'}
                 </div>
               )}
             </Card>
@@ -83,8 +102,8 @@ const PatientDashboard = ({ setPage }) => {
                   </div>
                 </div>
                 <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
-                  <Btn variant="secondary" size="sm">Reschedule</Btn>
-                  <Btn variant="danger" size="sm">Cancel</Btn>
+                  <Btn variant="secondary" size="sm" onClick={rescheduleAppt}>Reschedule</Btn>
+                  <Btn variant="danger" size="sm" onClick={() => setPage('appointments')}>Cancel</Btn>
                 </div>
               </div>
             ) : (
@@ -130,10 +149,50 @@ const PatientDashboard = ({ setPage }) => {
 ════════════════════════════════════════ */
 const PatientProfile = () => {
   const pt = PATIENT_USER;
+  const { record } = usePatientClinic(pt.id);
+  const person = record || pt;
   const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({});
+  const [busy, setBusy] = useState(false);
 
-  const Field = ({ label, value, icon }) => (
-    <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center' }}>
+  const startEdit = () => {
+    setForm({
+      name: person.name, age: person.age, sex: person.sex,
+      phone: person.phone, email: person.email, address: person.address,
+    });
+    setEditing(true);
+  };
+  const cancelEdit = () => { setEditing(false); setForm({}); };
+  const confirmEdit = async () => {
+    setBusy(true);
+    const patch = {
+      name: (form.name || '').trim() || person.name,
+      age: parseInt(form.age, 10) || person.age,
+      sex: form.sex,
+      phone: (form.phone || '').trim(),
+      email: (form.email || '').trim(),
+      address: (form.address || '').trim(),
+    };
+    // Update the in-browser store (offline/demo + instant UI mirror)
+    ClinicStore.updatePatient(pt.id, patch);
+    // Persist to the backend so the doctor's DB-backed Patient Record reflects it
+    try {
+      await PatientApi.updateProfile({ contact: patch.phone, address: patch.address });
+    } catch (e) { /* backend unreachable — offline demo keeps the client update */ }
+    setBusy(false);
+    setEditing(false);
+  };
+  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const inputStyle = {
+    width: '100%', padding: '8px 11px', borderRadius: 8, border: '1px solid var(--border)',
+    fontSize: 14, fontFamily: 'inherit', color: 'var(--text)', background: 'var(--surface)', outline: 'none',
+  };
+
+  /* Plain render helpers (NOT nested components — calling them inline keeps
+     element identity stable so inputs don't lose focus on each keystroke). */
+  const roRow = (label, value, icon) => (
+    <div key={label} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center' }}>
       <Icon name={icon || 'user'} size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{label}</div>
@@ -142,21 +201,37 @@ const PatientProfile = () => {
     </div>
   );
 
+  const editRow = (label, icon, k, { type, options } = {}) => (
+    <div key={k} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center' }}>
+      <Icon name={icon || 'user'} size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
+        {options ? (
+          <select value={form[k] || ''} onChange={e => set(k, e.target.value)} style={inputStyle}>
+            {options.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        ) : (
+          <input type={type || 'text'} value={form[k] ?? ''} onChange={e => set(k, e.target.value)} style={inputStyle} />
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="My Profile" actions={<Btn icon="edit" variant={editing ? 'primary' : 'secondary'} onClick={() => setEditing(e => !e)}>{editing ? 'Save Changes' : 'Edit Profile'}</Btn>} />
+      <TopBar title="My Profile" actions={!editing && <Btn icon="edit" variant="secondary" onClick={startEdit}>Edit Profile</Btn>} />
       <PageContent>
         <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, maxWidth: 860 }}>
           {/* Profile card */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Card style={{ textAlign: 'center' }} padding="28px">
-              <Avatar name={pt.name} size={72} />
-              <div style={{ marginTop: 16, fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{pt.name}</div>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>{pt.id}</div>
-              <RiskBadge level={pt.riskLevel} />
+              <Avatar name={person.name} size={72} />
+              <div style={{ marginTop: 16, fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{person.name}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>{person.id}</div>
+              <RiskBadge level={person.riskLevel} />
               <Divider style={{ margin: '16px 0' }} />
               <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-                {[['Age', `${pt.age}y`], ['Skin', `Type ${pt.skinType}`], ['Blood', pt.bloodType]].map(([k, v]) => (
+                {[['Age', `${person.age}y`], ['Skin', `Type ${person.skinType}`], ['Blood', person.bloodType]].map(([k, v]) => (
                   <div key={k} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{v}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{k}</div>
@@ -181,24 +256,41 @@ const PatientProfile = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Card>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Personal Information</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>Your registered details</div>
-              <Field label="Full Name" value={pt.name} icon="user" />
-              <Field label="Age" value={`${pt.age} years old`} icon="clock" />
-              <Field label="Sex" value={pt.sex} icon="user" />
-              <Field label="Phone" value={pt.phone} icon="phone" />
-              <Field label="Email" value={pt.email} icon="mail" />
-              <Field label="Address" value={pt.address} icon="mapPin" />
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{editing ? 'Update your details, then confirm' : 'Your registered details'}</div>
+              {editing ? (
+                <>
+                  {editRow('Full Name', 'user', 'name')}
+                  {editRow('Age', 'clock', 'age', { type: 'number' })}
+                  {editRow('Sex', 'user', 'sex', { options: ['Female', 'Male', 'Other'] })}
+                  {editRow('Phone', 'phone', 'phone')}
+                  {editRow('Email', 'mail', 'email', { type: 'email' })}
+                  {editRow('Address', 'mapPin', 'address')}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                    <Btn icon="check" onClick={confirmEdit} disabled={busy}>{busy ? 'Saving…' : 'Confirm'}</Btn>
+                    <Btn variant="secondary" onClick={cancelEdit} disabled={busy}>Cancel</Btn>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {roRow('Full Name', person.name, 'user')}
+                  {roRow('Age', `${person.age} years old`, 'clock')}
+                  {roRow('Sex', person.sex, 'user')}
+                  {roRow('Phone', person.phone, 'phone')}
+                  {roRow('Email', person.email, 'mail')}
+                  {roRow('Address', person.address, 'mapPin')}
+                </>
+              )}
             </Card>
 
             <Card>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Medical Information</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {[
-                  ['Blood Type', pt.bloodType],
-                  ['Skin Type', `Type ${pt.skinType} (ITA ${pt.ita}°)`],
-                  ['Allergies', pt.allergies],
-                  ['Primary Lesion Site', pt.localization],
-                  ['Known Condition', DX_LABELS[pt.diagnosis] || pt.diagnosis],
+                  ['Blood Type', person.bloodType],
+                  ['Skin Type', `Type ${person.skinType} (ITA ${person.ita}°)`],
+                  ['Allergies', person.allergies],
+                  ['Primary Lesion Site', person.localization],
+                  ['Known Condition', DX_LABELS[person.diagnosis] || person.diagnosis],
                   ['Attending Doctor', 'Dr. Ramaneiss Pillai'],
                 ].map(([k, v]) => (
                   <div key={k} style={{ padding: '12px', background: 'var(--surface-2)', borderRadius: 9 }}>
@@ -209,13 +301,13 @@ const PatientProfile = () => {
               </div>
             </Card>
 
-            {pt.riskLevel === 'high' && (
+            {person.riskLevel === 'high' && (
               <Card style={{ borderColor: 'var(--danger)', background: 'var(--danger-bg)' }}>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <Icon name="alertTriangle" size={18} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 1 }} />
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--danger)', marginBottom: 4 }}>High-Risk Status</div>
-                    <div style={{ fontSize: 13, color: 'var(--danger)', lineHeight: 1.6 }}>{pt.notes}</div>
+                    <div style={{ fontSize: 13, color: 'var(--danger)', lineHeight: 1.6 }}>{person.notes}</div>
                   </div>
                 </div>
               </Card>
@@ -231,7 +323,7 @@ const PatientProfile = () => {
    PATIENT DETECTION ANALYSIS
 ════════════════════════════════════════ */
 
-const PatientDetection = () => {
+const PatientDetection = ({ setPage }) => {
   const pt = PATIENT_USER;
   const [step,     setStep]    = React.useState('upload');
   const [fileUrl,  setFileUrl] = React.useState(null);
@@ -435,26 +527,62 @@ const PatientDetection = () => {
               )}
             </Card>
 
-            {/* EOD / bias-reduction card */}
-            <Card style={{ border: '1.5px solid var(--success)', background: 'linear-gradient(150deg, var(--success-bg), var(--surface))' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Icon name="shield" size={16} style={{ color: 'var(--success)' }} />
-                <div style={{ fontSize: 14, fontWeight: 800 }}>Fair & Bias-Corrected Result</div>
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
-                For your demographic group (<strong>{result.eodSubgroup}</strong>), our Enhanced model cut the
-                Equal Opportunity Difference from <strong>{result.eodBaseline.toFixed(3)}</strong> down to
-                <strong> {result.eodEnhanced.toFixed(3)}</strong> — a
-                <strong style={{ color: 'var(--success)' }}> {result.eodReduction}% reduction in diagnostic bias</strong>
-                compared with a standard model. This means your result is held to the same accuracy standard as every other group.
-              </div>
-            </Card>
+            {/* EOD / bias-reduction visualization (matches the doctor portal) */}
+            {(() => {
+              const eod = eodForPatient(pt);
+              const eodAxes = eod.axes;
+              const eodBase = result.eodBaseline ?? eod.meanBaseline;
+              const eodEnh  = result.eodEnhanced ?? eod.meanEnhanced;
+              const eodRed  = result.eodReduction ?? eod.meanReduction;
+              return (
+                <Card style={{ border: '2px solid var(--success)', background: 'linear-gradient(150deg, var(--success-bg), var(--surface))' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <Icon name="shield" size={17} style={{ color: 'var(--success)' }} />
+                    <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>Fair &amp; Bias-Corrected Result</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+                    Equal Opportunity Difference on the protected axes you sit on, comparing the baseline model with the deployed Full Framework.
+                  </div>
+
+                  {/* Aggregate reduction */}
+                  <div style={{ textAlign: 'center', padding: '4px 0 12px' }}>
+                    <div style={{ fontSize: 40, fontWeight: 900, color: 'var(--success)', lineHeight: 1 }}>
+                      <AnimatedNumber value={eodRed} suffix="%" />
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>mean bias reduction · EOD {eodBase.toFixed(3)} → {eodEnh.toFixed(3)}</div>
+                  </div>
+
+                  {/* Per-axis rows */}
+                  {eodAxes.map(ax => (
+                    <div key={ax.key} style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                        <span style={{ color: 'var(--text)' }}>{ax.axisLabel} <span style={{ color: 'var(--text-muted)' }}>· {ax.subgroup}</span></span>
+                        <span style={{ fontWeight: 800, color: 'var(--success)' }}>−{ax.reduction}%</span>
+                      </div>
+                      <div style={{ position: 'relative', height: 8, background: 'var(--surface-2)', borderRadius: 5, overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', inset: 0, width: `${Math.min(ax.baseline / 0.7 * 100, 100)}%`, background: 'var(--danger)', opacity: 0.28 }} />
+                        <div style={{ position: 'absolute', inset: 0, width: `${Math.min(ax.enhanced / 0.7 * 100, 100)}%`, background: 'var(--success)', borderRadius: 5 }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                        <span>baseline {ax.baseline.toFixed(3)}</span>
+                        <span>deployed {ax.enhanced.toFixed(3)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+              );
+            })()}
 
             <Card>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Doctor's Recommendation</div>
               <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.7, marginBottom: 16 }}>{result.recommendation}</div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <Btn icon="calendar">Book Appointment</Btn>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <Btn icon="calendar" onClick={() => setPage && setPage('appointments')}>Book Appointment</Btn>
+                <Btn variant="secondary" icon="download" onClick={() => downloadAnalysisReport(
+                  pt,
+                  { ...result, localization, date: new Date().toISOString().slice(0, 10), eodAxes: (eodForPatient(pt) || {}).axes },
+                  ''
+                )}>Download Report</Btn>
                 <Btn variant="secondary" icon="refresh" onClick={() => setStep('upload')}>New Scan</Btn>
               </div>
             </Card>
@@ -644,17 +772,18 @@ const PatientMessages = () => {
    PATIENT NOTIFICATIONS
 ════════════════════════════════════════ */
 const PatientNotifications = () => {
-  const [notifs, setNotifs] = useState(NOTIFICATIONS_PATIENT);
-  const unread = notifs.filter(n => !n.read).length;
+  const store = usePatientNotifs();
+  const notifs = store.list();
+  const unread = store.unreadCount();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <TopBar title="Notifications" subtitle={`${unread} unread`}
-        actions={unread > 0 && <Btn variant="ghost" size="sm" onClick={() => setNotifs(n => n.map(x => ({ ...x, read: true })))}>Mark all read</Btn>} />
+        actions={unread > 0 && <Btn variant="ghost" size="sm" onClick={() => store.markAllRead()}>Mark all read</Btn>} />
       <PageContent>
         <Card padding="0" style={{ maxWidth: 600 }}>
           {notifs.map(n => (
-            <div key={n.id} onClick={() => setNotifs(ns => ns.map(x => x.id === n.id ? { ...x, read: true } : x))} style={{
+            <div key={n.id} onClick={() => store.markRead(n.id)} style={{
               display: 'flex', gap: 14, padding: '16px 20px', borderBottom: '1px solid var(--border)',
               background: n.read ? 'transparent' : 'var(--primary-light)', cursor: 'pointer',
             }}>

@@ -269,7 +269,7 @@ const BarChart = ({ data, height = 180, colorFn }) => {
         return (
           <div key={d.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
-              {typeof d.value === 'number' && d.value <= 1 ? `${(d.value * 100).toFixed(0)}%` : d.value.toLocaleString()}
+              {d.isPercent ? `${(d.value * 100).toFixed(0)}%` : d.value.toLocaleString()}
             </div>
             <div style={{ width: '100%', height: barH, background: color, borderRadius: '5px 5px 0 0', minHeight: 4 }} />
             <div style={{ width: '100%', height: 1, background: 'var(--border)' }} />
@@ -385,14 +385,15 @@ const HBarChart = ({ data, color = 'var(--primary)', labelWidth = 118, valueFmt 
 
 /* ── AreaTrend — filled line chart for a time series ─────── */
 const AreaTrend = ({ data, height = 150, color = 'var(--primary)', valueSuffix = '' }) => {
-  const w = 520, pad = 8;
+  const w = 640, pad = 34;
   const hi = Math.max(...data.map(d => d.value)) * 1.15 || 1;
   const stepX = (w - pad * 2) / (data.length - 1);
   const pts = data.map((d, i) => [pad + i * stepX, height - 26 - (d.value / hi) * (height - 40)]);
   const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
   const area = `${line} L ${pts[pts.length - 1][0].toFixed(1)} ${height - 26} L ${pts[0][0].toFixed(1)} ${height - 26} Z`;
   return (
-    <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+    <div style={{ maxWidth: w, margin: '0 auto' }}>
+    <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="xMidYMid meet" style={{ overflow: 'visible', display: 'block' }}>
       <defs>
         <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.28" />
@@ -409,6 +410,7 @@ const AreaTrend = ({ data, height = 150, color = 'var(--primary)', valueSuffix =
         </g>
       ))}
     </svg>
+    </div>
   );
 };
 

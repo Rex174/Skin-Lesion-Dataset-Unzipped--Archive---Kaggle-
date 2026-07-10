@@ -34,7 +34,7 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
         <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
           <StatCard icon="users"         label="Total Patients"  value={<AnimatedNumber value={totalPatients} />} sub="Under your care" />
           <StatCard icon="scan"          label="Analyses Today"  value={<AnimatedNumber value={analysesToday} />} sub="Updating in real time" />
-          <StatCard icon="calendar"      label="Upcoming Appts"  value={<AnimatedNumber value={upcomingCount} />} sub="Next: 09:00 today" />
+          <StatCard icon="calendar"      label="Upcoming Appts"  value={<AnimatedNumber value={upcomingCount} />} />
           <StatCard icon="alertTriangle" label="High-Risk Cases" value={<AnimatedNumber value={highRiskCount} />} sub="Requires immediate action" iconColor="var(--danger)" />
         </div>
 
