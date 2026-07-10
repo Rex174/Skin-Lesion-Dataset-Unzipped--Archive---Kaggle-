@@ -37,19 +37,19 @@ const DETECTIONS = [
 ];
 
 const APPOINTMENTS = [
-  { id:'APT001', patientId:'P001', patientName:'Aisha Rahman',    date:'2026-04-22', time:'09:00', status:'scheduled', reason:'Biopsy Follow-up',      duration:30 },
-  { id:'APT002', patientId:'P005', patientName:'Fatimah Idris',   date:'2026-04-22', time:'10:30', status:'scheduled', reason:'Biopsy Consultation',   duration:45 },
-  { id:'APT003', patientId:'P002', patientName:'Tom Hendricks',   date:'2026-04-23', time:'11:00', status:'scheduled', reason:'Routine Monitoring',    duration:20 },
-  { id:'APT004', patientId:'P003', patientName:'Maya Krishnan',   date:'2026-04-24', time:'14:00', status:'scheduled', reason:'Pre-surgery Consult',   duration:30 },
+  { id:'APT001', patientId:'P001', patientName:'Aisha Rahman',    date:'2026-08-22', time:'09:00', status:'scheduled', reason:'Biopsy Follow-up',      duration:30 },
+  { id:'APT002', patientId:'P005', patientName:'Fatimah Idris',   date:'2026-08-22', time:'10:30', status:'scheduled', reason:'Biopsy Consultation',   duration:45 },
+  { id:'APT003', patientId:'P002', patientName:'Tom Hendricks',   date:'2026-08-23', time:'11:00', status:'scheduled', reason:'Routine Monitoring',    duration:20 },
+  { id:'APT004', patientId:'P003', patientName:'Maya Krishnan',   date:'2026-08-24', time:'14:00', status:'scheduled', reason:'Pre-surgery Consult',   duration:30 },
   { id:'APT005', patientId:'P004', patientName:"James O'Brien",   date:'2026-04-21', time:'09:30', status:'completed', reason:'Treatment Review',      duration:30 },
   { id:'APT006', patientId:'P007', patientName:'Sarah Pearce',    date:'2026-04-20', time:'15:00', status:'completed', reason:'Annual Check-up',       duration:20 },
-  { id:'APT007', patientId:'P006', patientName:'Lin Chen',        date:'2026-04-25', time:'09:00', status:'scheduled', reason:'New Lesion Assessment', duration:30 },
-  { id:'APT008', patientId:'P008', patientName:'Ahmed Al-Rashid', date:'2026-04-28', time:'13:00', status:'scheduled', reason:'6-Month Follow-up',     duration:20 },
+  { id:'APT007', patientId:'P006', patientName:'Lin Chen',        date:'2026-08-25', time:'09:00', status:'scheduled', reason:'New Lesion Assessment', duration:30 },
+  { id:'APT008', patientId:'P008', patientName:'Ahmed Al-Rashid', date:'2026-08-28', time:'13:00', status:'scheduled', reason:'6-Month Follow-up',     duration:20 },
 ];
 
 const NOTIFICATIONS_DOCTOR = [
   { id:'ND1', type:'alert',       title:'High-risk result flagged',  message:"Fatimah Idris's analysis returned high-risk melanoma (81% confidence). Immediate action required.", time:'10 min ago', read:false },
-  { id:'ND2', type:'appointment', title:'Upcoming appointment',      message:'Aisha Rahman — Biopsy Follow-up at 09:00 tomorrow (Apr 22).',                                       time:'1 hour ago',  read:false },
+  { id:'ND2', type:'appointment', title:'Upcoming appointment',      message:'Aisha Rahman — Biopsy Follow-up at 09:00 (Aug 22).',                                       time:'1 hour ago',  read:false },
   { id:'ND3', type:'info',        title:'New patient registered',    message:'Sarah Pearce has been added to your patient list.',                                                  time:'3 hours ago', read:true  },
   { id:'ND4', type:'appointment', title:'Appointment completed',     message:"James O'Brien's appointment marked as completed.",                                                   time:'5 hours ago', read:true  },
   { id:'ND5', type:'alert',       title:'Analysis complete',         message:"Aisha Rahman's melanoma detection analysis is ready for review.",                                    time:'1 day ago',   read:true  },
@@ -57,7 +57,7 @@ const NOTIFICATIONS_DOCTOR = [
 ];
 
 const NOTIFICATIONS_PATIENT = [
-  { id:'NP1', type:'appointment', title:'Appointment confirmed',       message:'Your appointment with Dr. Ramaneiss is confirmed for April 22 at 09:00.', time:'2 hours ago', read:false },
+  { id:'NP1', type:'appointment', title:'Appointment confirmed',       message:'Your appointment with Dr. Ramaneiss is confirmed for August 22 at 09:00.', time:'2 hours ago', read:false },
   { id:'NP2', type:'alert',       title:'Detection results available', message:'Your melanoma screening results from April 15 are now available for review.', time:'1 day ago', read:false },
   { id:'NP3', type:'info',        title:'Reminder: Sun protection',    message:'Your doctor recommends regular use of SPF 50+ sunscreen. Annual check-up is due.', time:'2 days ago', read:true },
 ];

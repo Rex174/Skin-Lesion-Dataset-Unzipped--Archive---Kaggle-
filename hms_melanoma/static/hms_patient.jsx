@@ -94,7 +94,7 @@ const PatientDashboard = ({ setPage }) => {
                 <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                   <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--info-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--info)', lineHeight: 1 }}>{nextApt.date.split('-')[2]}</div>
-                    <div style={{ fontSize: 11, color: 'var(--info)', opacity: 0.8 }}>APR</div>
+                    <div style={{ fontSize: 11, color: 'var(--info)', opacity: 0.8 }}>{['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][(parseInt(nextApt.date.split('-')[1], 10) || 1) - 1]}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{nextApt.reason}</div>
@@ -604,6 +604,9 @@ const PatientAppointments = () => {
   const [booking, setBooking] = useState(false);
   const [form, setForm] = useState({ date: '', time: '', reason: '' });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const todayISO = new Date().toISOString().slice(0, 10);
 
   const MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   const monOf = d => { const m = parseInt((d || '').split('-')[1], 10); return MON[(m || 1) - 1]; };
@@ -611,6 +614,13 @@ const PatientAppointments = () => {
 
   const confirmBooking = async () => {
     if (!form.date || !form.time || !form.reason) return;
+    // Reject appointments in the past (date OR time earlier than now)
+    const when = new Date(`${form.date}T${form.time}`);
+    if (isNaN(when.getTime()) || when.getTime() < Date.now()) {
+      setError('Please choose a date and time in the future — appointments cannot be booked in the past.');
+      return;
+    }
+    setError('');
     setBusy(true);
     await book({ patientId: pt.id, date: form.date, time: form.time, duration: 30, reason: form.reason });
     setBusy(false); setBooking(false); setForm({ date: '', time: '', reason: '' });
@@ -629,7 +639,7 @@ const PatientAppointments = () => {
             ].map(f => (
               <div key={f.key} style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>{f.label}</div>
-                <input type={f.type} value={form[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                <input type={f.type} value={form[f.key]} min={f.type === 'date' ? todayISO : undefined} onChange={e => { setError(''); setForm(prev => ({ ...prev, [f.key]: e.target.value })); }}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 9, border: '1px solid var(--border)', fontSize: 14, fontFamily: 'inherit', outline: 'none', color: 'var(--text)' }} />
               </div>
             ))}
@@ -645,6 +655,11 @@ const PatientAppointments = () => {
                 <option>Treatment Review</option>
               </select>
             </div>
+            {error && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 14px', marginBottom: 14, background: 'var(--danger-bg)', borderRadius: 9, fontSize: 13, color: 'var(--danger)', fontWeight: 500 }}>
+                <Icon name="alertTriangle" size={15} style={{ flexShrink: 0, marginTop: 1 }} /> {error}
+              </div>
+            )}
             <Btn icon="check" onClick={confirmBooking} disabled={busy || !form.date || !form.time || !form.reason} style={{ width: '100%', justifyContent: 'center' }}>{busy ? 'Booking…' : 'Confirm Booking'}</Btn>
           </Card>
         )}
