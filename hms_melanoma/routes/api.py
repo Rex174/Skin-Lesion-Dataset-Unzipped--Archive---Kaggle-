@@ -29,6 +29,61 @@ def _ok(data=None, **kwargs):
     return jsonify(payload)
 
 
+@api_bp.route("/auth/register", methods=["POST"])
+def register_doctor():
+    """Self-service doctor registration. Creates a User(role=doctor) + a
+    DoctorProfile, signs the new doctor in (sets the session), and returns the
+    user object in the same shape as /api/auth/login."""
+    import re as _re
+    body = request.get_json(force=True) or {}
+    full_name = str(body.get("fullName", "")).strip()
+    email     = str(body.get("email", "")).strip()
+    password  = str(body.get("password", "")).strip()
+    if not full_name:
+        return _err("Full name is required", 400)
+    if not email:
+        return _err("Email address is required", 400)
+    if not password:
+        return _err("Password is required", 400)
+
+    if User.query.filter_by(email=email).first():
+        return _err("An account with this email already exists", 409)
+
+    # Derive a unique username from the name (e.g. "Dr. Sara Lee" -> dr_sara_lee)
+    base = _re.sub(r"[^a-z0-9]+", "_",
+                   full_name.lower().replace("'", "").replace("\u2019", "").replace(".", "")
+                   ).strip("_") or "doctor"
+    username = base
+    n = 1
+    while User.query.filter_by(username=username).first():
+        n += 1
+        username = f"{base}{n}"
+
+    user = User(username=username, email=email, role="doctor")
+    user.set_password(password)
+    db.session.add(user)
+    db.session.flush()   # get user.id
+
+    doctor = DoctorProfile(
+        user_id         = user.id,
+        full_name       = full_name,
+        specialization  = body.get("specialization") or "General",
+        license_number  = body.get("licenseNumber") or f"DRM-{user.id:04d}",
+        contact_number  = body.get("contactNumber"),
+    )
+    db.session.add(doctor)
+    db.session.commit()
+
+    # Sign the new doctor in
+    session["user_id"] = user.id
+    session["role"]    = "doctor"
+
+    return _ok({
+        "id": user.id, "username": username, "role": "doctor",
+        "full_name": full_name, "specialization": doctor.specialization,
+    }, message="Doctor registered")
+
+
 # ── Inline prediction (no TF import at module level — avoids startup crash) ──
 def _run_predict(image_path, model_key, model_path, label_map_path,
                  class_labels, class_risk,
@@ -167,6 +222,22 @@ def _eod_by_axis():
 
 _AGE_GROUP_LABEL = {"Pediatric": "Pediatric (0–17)", "YoungAdult": "Young adult (18–39)",
                     "MiddleAged": "Middle-aged (40–59)", "Elderly": "Elderly (60+)"}
+
+
+def _age_group_for(age):
+    """Bucket a numeric age into the app's age-group key."""
+    try:
+        a = int(age)
+    except (TypeError, ValueError):
+        return None
+    if a < 18:
+        return "Pediatric"
+    if a < 40:
+        return "YoungAdult"
+    if a < 60:
+        return "MiddleAged"
+    return "Elderly"
+
 _LOC_ZONE = {"back": "Trunk", "trunk": "Trunk", "abdomen": "Trunk", "chest": "Trunk", "genital": "Trunk",
              "face": "Head", "neck": "Head", "scalp": "Head", "ear": "Head",
              "lower extremity": "Lower extremity", "foot": "Lower extremity", "acral": "Lower extremity",
@@ -595,6 +666,111 @@ def doctor_patients():
     return _ok(patients)
 
 
+@api_bp.route("/doctor/patients", methods=["POST"])
+@login_required
+def doctor_add_patient():
+    """Register a new patient (doctor-initiated) and assign to this doctor.
+    New patients carry no melanoma checks, so their UI risk starts at 'low';
+    subsequent analyses update it. Creates the backing User + Patient rows."""
+    if session.get("role") != "doctor":
+        return _err("Forbidden", 403)
+    doctor = DoctorProfile.query.filter_by(user_id=session["user_id"]).first_or_404()
+    body   = request.get_json(force=True) or {}
+
+    name = str(body.get("name", "")).strip()
+    if not name:
+        return _err("Patient name is required", 400)
+
+    # Derive date_of_birth from age (preserve today's month/day)
+    today = datetime.today().date()
+    try:
+        age = int(body.get("age"))
+    except (TypeError, ValueError):
+        return _err("A valid age is required", 400)
+    try:
+        dob = today.replace(year=today.year - age)
+    except ValueError:
+        dob = today.replace(year=today.year - age, day=28)
+
+    # Unique username/email for the auth row
+    base = "".join(ch for ch in name.lower().replace(" ", ".") if ch.isalnum() or ch == ".")
+    username = base or "patient"
+    n = 1
+    while User.query.filter_by(username=username).first():
+        n += 1
+        username = f"{base}{n}"
+    email = str(body.get("email", "")).strip()
+    if not email or User.query.filter_by(email=email).first():
+        email = f"{username}@melanoscan.local"
+
+    user = User(username=username, email=email, role="patient")
+    # Password derived from the patient's name: dot-separated words + '123'
+    # (e.g. 'Ahmed Al-Rashid' -> 'ahmed.al.rashid123'), matching the seed rule.
+    import re as _re
+    default_pw = _re.sub(r"[^a-z0-9]+", ".",
+                         name.lower().replace("'", "").replace("\u2019", "").replace(".", "")
+                         ).strip(".") + "123"
+    user.set_password(body.get("password") or default_pw)
+    db.session.add(user)
+    db.session.flush()   # get user.id
+
+    patient = Patient(
+        user_id           = user.id,
+        full_name         = name,
+        date_of_birth     = dob,
+        sex               = str(body.get("sex", "")).lower() or "female",
+        contact_number    = body.get("phone"),
+        address           = body.get("address"),
+        email             = email,
+        skin_type         = body.get("skinType"),
+        ita               = (int(body["ita"]) if str(body.get("ita", "")).lstrip("-").isdigit() else None),
+        localization      = body.get("localization"),
+        blood_type        = body.get("bloodType"),
+        allergies         = body.get("allergies"),
+        known_diagnosis   = body.get("diagnosis"),
+        clinical_notes    = body.get("notes"),
+        assigned_doctor_id = doctor.id,
+    )
+    db.session.add(patient)
+    db.session.commit()
+
+    return _ok({
+        "id": patient.id, "name": patient.full_name, "age": patient.age,
+        "sex": (patient.sex or "").capitalize(), "ageGroup": patient.age_group,
+        "skinType": patient.skin_type or "—", "ita": patient.ita,
+        "localization": patient.localization or "—",
+        "diagnosis": patient.known_diagnosis or "",
+        "bloodType": patient.blood_type, "allergies": patient.allergies,
+        "email": patient.email, "phone": patient.contact_number,
+        "address": patient.address, "notes": patient.clinical_notes,
+        "lastVisit": None, "riskLevel": "low",
+    }, message="Patient registered")
+
+
+@api_bp.route("/doctor/patients/<int:patient_id>", methods=["DELETE"])
+@login_required
+def doctor_delete_patient(patient_id):
+    """Remove a patient (and their dependent rows) from this doctor's roster."""
+    if session.get("role") != "doctor":
+        return _err("Forbidden", 403)
+    doctor  = DoctorProfile.query.filter_by(user_id=session["user_id"]).first_or_404()
+    patient = Patient.query.get_or_404(patient_id)
+    if patient.assigned_doctor_id != doctor.id:
+        return _err("Forbidden", 403)
+    # Clear dependent records first (no cascade defined on the relationships)
+    MelanomaCheck.query.filter_by(patient_id=patient.id).delete()
+    MedicalHistory.query.filter_by(patient_id=patient.id).delete()
+    Report.query.filter_by(patient_id=patient.id).delete()
+    Appointment.query.filter_by(patient_id=patient.id).delete()
+    Message.query.filter_by(patient_id=patient.id).delete()
+    user = User.query.get(patient.user_id)
+    db.session.delete(patient)
+    if user:
+        db.session.delete(user)
+    db.session.commit()
+    return _ok({"id": patient_id}, message="Patient deleted")
+
+
 @api_bp.route("/doctor/patients/<int:patient_id>/record")
 @login_required
 def doctor_patient_record(patient_id):
@@ -700,11 +876,25 @@ def patient_profile():
         return _err("Forbidden", 403)
     patient = Patient.query.filter_by(user_id=session["user_id"]).first_or_404()
     doc     = patient.assigned_doctor
+    # Risk derived from the latest melanoma check (same rule the doctor sees)
+    latest  = MelanomaCheck.query.filter_by(patient_id=patient.id)\
+                .order_by(MelanomaCheck.timestamp.desc()).first()
+    risk = (latest.risk_level if latest else None) or "low"
+    if risk == "moderate":
+        risk = "medium"
     return _ok({
         "id": patient.id, "name": patient.full_name,
         "dob": str(patient.date_of_birth), "age": patient.age,
         "ageGroup": patient.age_group, "sex": patient.sex,
         "contact": patient.contact_number, "address": patient.address,
+        "email": getattr(patient, "email", None),
+        "riskLevel": risk,
+        "skinType": getattr(patient, "skin_type", None),
+        "ita": getattr(patient, "ita", None),
+        "bloodType": getattr(patient, "blood_type", None),
+        "allergies": getattr(patient, "allergies", None),
+        "localization": getattr(patient, "localization", None),
+        "diagnosis": getattr(patient, "known_diagnosis", None),
         "assignedDoctor": doc.full_name if doc else None,
     })
 
@@ -716,8 +906,31 @@ def patient_update_profile():
         return _err("Forbidden", 403)
     patient = Patient.query.filter_by(user_id=session["user_id"]).first_or_404()
     body    = request.get_json(force=True) or {}
+    if "name" in body and str(body["name"]).strip():
+        patient.full_name = str(body["name"]).strip()
+    if "age" in body and body["age"] not in (None, ""):
+        try:
+            new_age = int(body["age"])
+            today   = datetime.today().date()
+            dob     = patient.date_of_birth
+            # Preserve month/day; shift birth year so the computed age matches.
+            if dob is None:
+                dob = today
+            has_had_bday = (today.month, today.day) >= (dob.month, dob.day)
+            birth_year = today.year - new_age - (0 if has_had_bday else 1)
+            try:
+                patient.date_of_birth = dob.replace(year=birth_year)
+            except ValueError:
+                # Feb 29 → non-leap year: fall back to Feb 28
+                patient.date_of_birth = dob.replace(year=birth_year, day=28)
+        except (TypeError, ValueError):
+            pass
+    if "sex" in body and body["sex"]:
+        patient.sex = str(body["sex"]).lower()
     if "contact" in body:
         patient.contact_number = body["contact"]
+    if hasattr(patient, "email") and "email" in body:
+        patient.email = body["email"]
     if "address" in body:
         patient.address = body["address"]
     db.session.commit()
@@ -731,14 +944,26 @@ def patient_checks():
         return _err("Forbidden", 403)
     patient = Patient.query.filter_by(user_id=session["user_id"]).first_or_404()
     checks  = []
+    _RECO = {
+        "mel": "Immediate excisional biopsy recommended. Urgent referral to surgical oncology.",
+        "bcc": "Surgical excision recommended. Consult with your dermatologist.",
+        "akiec": "Topical treatment or cryotherapy may be required. Book a follow-up.",
+        "nv": "Benign lesion detected. Continue annual dermoscopic monitoring.",
+        "bkl": "Benign keratosis detected. No immediate treatment required.",
+        "df": "Benign lesion confirmed. No intervention required.",
+        "vasc": "Vascular lesion noted. Dermatologist review recommended.",
+    }
     for c in MelanomaCheck.query.filter_by(patient_id=patient.id)\
               .order_by(MelanomaCheck.timestamp.desc()).all():
         probs = json.loads(c.all_probabilities) if c.all_probabilities else {}
         checks.append({
             "id": c.id, "date": c.timestamp.strftime("%Y-%m-%d"),
             "dx": c.predicted_class, "dxLabel": c.predicted_label,
-            "confidence": c.confidence_score, "riskLevel": c.risk_level,
+            "confidence": c.confidence_score,
+            "riskLevel": "medium" if c.risk_level == "moderate" else c.risk_level,
             "scores": probs, "fairnessNote": c.fairness_note,
+            "localization": getattr(c, "localization", None),
+            "recommendation": _RECO.get(c.predicted_class, "Consult your dermatologist."),
         })
     return _ok(checks)
 
