@@ -103,6 +103,14 @@ def _username(name: str) -> str:
     return u
 
 
+def _password(name: str) -> str:
+    """Password derived from the name: dot-separated words + '123'.
+    'Dr. Ramaneiss' -> 'dr.ramaneiss123', 'Ahmed Al-Rashid' -> 'ahmed.al.rashid123'."""
+    p = name.lower().replace("'", "").replace("\u2019", "").replace(".", "")
+    p = re.sub(r"[^a-z0-9]+", ".", p).strip(".")
+    return p + "123"
+
+
 def init_db(app):
     with app.app_context():
         db.create_all()
@@ -115,7 +123,7 @@ def init_db(app):
 
         # ── Doctor ───────────────────────────────────────────────────────────
         doc_user = User(username="dr_ramaneiss", email="dr.ramaneiss@hms.com", role="doctor")
-        doc_user.set_password("doctor123")
+        doc_user.set_password(_password("Dr. Ramaneiss"))
         db.session.add(doc_user)
         db.session.flush()
 
@@ -134,7 +142,7 @@ def init_db(app):
 
             uname = _username(name)
             pu = User(username=uname, email=email, role="patient")
-            pu.set_password("patient123")
+            pu.set_password(_password(name))
             db.session.add(pu)
             db.session.flush()
 
@@ -177,8 +185,8 @@ def init_db(app):
 
         db.session.commit()
         names = ", ".join(_username(p[0]) for p in SEED_PATIENTS)
-        print(f"[OK] Seeded doctor (dr_ramaneiss/doctor123) + {len(SEED_PATIENTS)} patients.")
-        print(f"     Patient logins (password patient123): {names}")
+        print(f"[OK] Seeded doctor (dr_ramaneiss/{_password('Dr. Ramaneiss')}) + {len(SEED_PATIENTS)} patients.")
+        print(f"     Patient logins (password = name.lastname123): {names}")
 
 
 app = create_app()
@@ -190,7 +198,7 @@ if __name__ == "__main__":
         print("=" * 54)
         print("  MelanoScan HMS  |  TP070818")
         print("  Open: http://127.0.0.1:5000")
-        print("  Doctor:  dr_ramaneiss / doctor123")
-        print("  Patient: aisha_rahman / patient123  (+ 7 more)")
+        print(f"  Doctor:  dr_ramaneiss / {_password('Dr. Ramaneiss')}")
+        print("  Patient: aisha_rahman / aisha.rahman123  (+ 7 more)")
         print("=" * 54)
         app.run(debug=True, host="0.0.0.0", port=5000)
