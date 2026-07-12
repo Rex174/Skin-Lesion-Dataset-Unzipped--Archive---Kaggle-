@@ -24,7 +24,7 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
         {/* Welcome */}
         <div style={{ background: 'linear-gradient(120deg, var(--primary) 0%, var(--primary-dark) 100%)', borderRadius: 'var(--radius-lg)', padding: '22px 28px', color: '#fff', marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Good morning, Dr. Ramaneiss 👋</div>
+            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Good morning, {(typeof DOCTOR_USER !== 'undefined' && DOCTOR_USER.name) || 'Doctor'} 👋</div>
             <div style={{ fontSize: 14, opacity: 0.85 }}>You have {upcomingCount} appointment{upcomingCount === 1 ? '' : 's'} scheduled and {highRiskCount} high-risk case{highRiskCount === 1 ? '' : 's'} to review.</div>
           </div>
           <div style={{ opacity: 0.18, fontSize: 72 }}>🔬</div>
@@ -132,12 +132,141 @@ const DoctorDashboard = ({ setPage, setSelectedPatientId }) => {
 };
 
 /* ════════════════════════════════════════
+   ADD PATIENT — registration modal
+════════════════════════════════════════ */
+const AddPatientModal = ({ onClose, onSaved }) => {
+  const BLANK = {
+    name: '', age: '', sex: 'Female', phone: '', email: '', address: '',
+    bloodType: '', skinType: 'III', ita: '', localization: 'back',
+    diagnosis: '', allergies: '', notes: '',
+  };
+  const [f, setF] = React.useState(BLANK);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
+
+  const inputStyle = {
+    width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--border)',
+    fontSize: 14, fontFamily: 'inherit', color: 'var(--text)', background: 'var(--surface)', outline: 'none', boxSizing: 'border-box',
+  };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, display: 'block', letterSpacing: 0.2 };
+
+  const field = (label, k, { type, options, placeholder, full } = {}) => (
+    <div style={{ gridColumn: full ? '1 / -1' : 'auto' }}>
+      <label style={labelStyle}>{label}</label>
+      {options ? (
+        <select value={f[k]} onChange={e => set(k, e.target.value)} style={inputStyle}>
+          {options.map(o => <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>)}
+        </select>
+      ) : (
+        <input type={type || 'text'} value={f[k]} placeholder={placeholder || ''} onChange={e => set(k, e.target.value)} style={inputStyle} />
+      )}
+    </div>
+  );
+
+  const save = async () => {
+    setErr('');
+    if (!f.name.trim()) { setErr('Patient name is required.'); return; }
+    if (!f.age || isNaN(parseInt(f.age, 10))) { setErr('A valid age is required.'); return; }
+    const payload = {
+      name: f.name.trim(), age: parseInt(f.age, 10), sex: f.sex,
+      phone: f.phone.trim(), email: f.email.trim(), address: f.address.trim(),
+      bloodType: f.bloodType.trim(), skinType: f.skinType,
+      ita: f.ita === '' ? null : parseInt(f.ita, 10),
+      localization: f.localization, diagnosis: f.diagnosis,
+      allergies: f.allergies.trim(), notes: f.notes.trim(),
+    };
+    setBusy(true);
+    try {
+      await DoctorApi.addPatient(payload);   // persists to DB + assigns to doctor
+      ClinicStore.notify();                  // trigger immediate re-poll of the list
+    } catch (e) {
+      ClinicStore.addPatientLocal(payload);  // offline demo fallback (incremental P-ID)
+    }
+    setBusy(false);
+    onSaved && onSaved();
+    onClose();
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(30,20,15,0.45)', zIndex: 1000,
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--surface)', borderRadius: 16, width: '100%', maxWidth: 640,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden',
+      }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>Register New Patient</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>New patients start at Low risk; scans update it. ID is assigned automatically.</div>
+          </div>
+          <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
+            <Icon name="xMark" size={20} />
+          </button>
+        </div>
+
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20, maxHeight: '62vh', overflowY: 'auto' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Personal Information</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {field('Full Name', 'name', { full: true, placeholder: 'e.g. Nadia Hassan' })}
+              {field('Age', 'age', { type: 'number', placeholder: 'e.g. 42' })}
+              {field('Sex', 'sex', { options: ['Female', 'Male', 'Other'] })}
+              {field('Phone', 'phone', { placeholder: '+60 12-345 6789' })}
+              {field('Email', 'email', { type: 'email', placeholder: 'name@email.com' })}
+              {field('Address', 'address', { full: true })}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Medical Information</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {field('Blood Type', 'bloodType', { options: ['', 'A+','A-','B+','B-','AB+','AB-','O+','O-'].map(v => ({ value: v, label: v || '—' })) })}
+              {field('Skin Type (Fitzpatrick)', 'skinType', { options: ['I','II','III','IV','V','VI'] })}
+              {field('ITA (°)', 'ita', { type: 'number', placeholder: 'e.g. 25' })}
+              {field('Primary Lesion Site', 'localization', { options: (typeof LOCALIZATIONS !== 'undefined' ? LOCALIZATIONS : ['back']).map(l => ({ value: l, label: l.replace(/\b\w/g, c => c.toUpperCase()) })) })}
+              {field('Known Condition', 'diagnosis', { options: [{ value: '', label: 'None' }, ...DX_ORDER.map(dx => ({ value: dx, label: DX_LABELS[dx] }))] })}
+              {field('Allergies', 'allergies', { placeholder: 'e.g. NSAIDs' })}
+              {field('Clinical Notes', 'notes', { full: true })}
+            </div>
+          </div>
+
+          {err && <div style={{ fontSize: 13, color: 'var(--danger)', fontWeight: 500 }}>{err}</div>}
+        </div>
+
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>Cancel</Btn>
+          <Btn icon="check" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Register Patient'}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════
    DOCTOR PATIENTS LIST
 ════════════════════════════════════════ */
 const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }) => {
   const [search, setSearch] = useState('');
   const [filterRisk, setFilterRisk] = useState('all');
+  const [showAdd, setShowAdd] = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
+  const [busyId, setBusyId] = useState(null);
   const clinic = useClinic();  // live DB when online, demo cohort offline
+
+  const deletePatient = async (p) => {
+    setBusyId(p.id);
+    try {
+      await DoctorApi.deletePatient(p.id);   // persist to DB
+      ClinicStore.notify();                  // trigger immediate re-poll
+    } catch (e) {
+      ClinicStore.deletePatientLocal(p.id);  // offline demo fallback
+    }
+    setBusyId(null);
+    setConfirmId(null);
+  };
 
   const filtered = (clinic.patients || []).filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || (p.diagnosis || '').includes(search.toLowerCase());
@@ -150,7 +279,9 @@ const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="Patient Management" subtitle={`${filtered.length} of ${totalCount} patients`} />
+      <TopBar title="Patient Management" subtitle={`${filtered.length} of ${totalCount} patients`}
+        actions={<Btn icon="plus" onClick={() => setShowAdd(true)}>Add Patient</Btn>} />
+      {showAdd && <AddPatientModal onClose={() => setShowAdd(false)} />}
       <PageContent>
         {/* Filters */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
@@ -193,9 +324,26 @@ const DoctorPatients = ({ setPage, setSelectedPatientId, setDetectionPatientId }
                   <td style={{ padding: '13px 16px', fontSize: 13, color: 'var(--text-muted)' }}>{p.lastVisit}</td>
                   <td style={{ padding: '13px 16px' }}><RiskBadge level={p.riskLevel} /></td>
                   <td style={{ padding: '13px 16px' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <Btn variant="secondary" size="sm" icon="eye" onClick={() => { setSelectedPatientId(p.id); setPage('record'); }}>View</Btn>
                       <Btn variant="primary"   size="sm" icon="scan" onClick={() => { setDetectionPatientId(p.id); setPage('detection'); }}>Analyze</Btn>
+                      {confirmId === p.id ? (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <button title="Confirm delete" onClick={() => deletePatient(p)} disabled={busyId === p.id} style={{
+                            width: 30, height: 30, borderRadius: 8, border: '1px solid var(--success)', background: 'var(--success-bg, #E7F5EC)',
+                            color: 'var(--success)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                          }}><Icon name="check" size={15} /></button>
+                          <button title="Cancel" onClick={() => setConfirmId(null)} disabled={busyId === p.id} style={{
+                            width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)',
+                            color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                          }}><Icon name="xMark" size={15} /></button>
+                        </div>
+                      ) : (
+                        <button title="Delete patient" onClick={() => setConfirmId(p.id)} style={{
+                          width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)',
+                          color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                        }}><Icon name="trash" size={15} /></button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -878,6 +1026,14 @@ const DoctorRecord = ({ selectedPatientId, setPage, setDetectionPatientId }) => 
                     <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>{d.date} · Confidence: {(d.confidence * 100).toFixed(0)}%</div>
                     <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{d.recommendation}</div>
                   </div>
+                  <Btn variant="secondary" size="sm" icon="download"
+                    onClick={() => downloadAnalysisReport(
+                      patient,
+                      { ...d, localization: (patient && patient.localization), eodAxes: (eodForPatient(patient) || {}).axes },
+                      d.notes
+                    )}>
+                    Report
+                  </Btn>
                 </div>
               ))}
             </Card>
@@ -1206,6 +1362,8 @@ const DoctorAnalytics = () => {
    DOCTOR NOTIFICATIONS
 ════════════════════════════════════════ */
 const DoctorNotifications = () => {
+  const store = useDoctorNotifs();
+  const notifs = store.list();
   // Persist which notifications have been read so they stay read across
   // navigation / reload (previously the read state was in-memory only).
   const READ_KEY = 'hms_doctor_read_notifs';
@@ -1219,9 +1377,9 @@ const DoctorNotifications = () => {
     const next = new Set(prev); next.add(id); persist(next); return next;
   });
   const markAllRead = () => setReadIds(() => {
-    const next = new Set(NOTIFICATIONS_DOCTOR.map(n => n.id)); persist(next); return next;
+    const next = new Set(notifs.map(n => n.id)); persist(next); return next;
   });
-  const unread = NOTIFICATIONS_DOCTOR.filter(n => !isRead(n)).length;
+  const unread = notifs.filter(n => !isRead(n)).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -1229,7 +1387,7 @@ const DoctorNotifications = () => {
         actions={unread > 0 && <Btn variant="ghost" size="sm" onClick={markAllRead}>Mark all read</Btn>} />
       <PageContent>
         <Card padding="0" style={{ maxWidth: 680 }}>
-          {NOTIFICATIONS_DOCTOR.map(n => {
+          {notifs.map(n => {
             const read = isRead(n);
             return (
             <div key={n.id} onClick={() => markRead(n.id)} style={{

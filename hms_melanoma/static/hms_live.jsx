@@ -247,6 +247,8 @@ const ClinicStore = (function () {
       id: d.id, patientId: d.patientId, patientName: pt ? pt.name : 'Unknown',
       dx: d.dx, dxLabel: d.dxLabel, confidence: d.confidence,
       riskLevel: d.riskLevel, date: d.date, live: false, _ts: Date.parse(d.date) || 0,
+      scores: d.scores, recommendation: d.recommendation,
+      localization: pt ? pt.localization : undefined,
     };
   });
 
@@ -286,6 +288,32 @@ const ClinicStore = (function () {
     },
     patientRecord(patientId) { return patients.find(p => p.id === patientId); },
 
+    /* Register a new patient in the offline demo store. Generates the next
+       incremental P-ID from the highest existing one, defaults risk to 'low'. */
+    addPatientLocal(fields) {
+      const nums = patients
+        .map(p => { const m = /^P(\d+)$/.exec(String(p.id)); return m ? parseInt(m[1], 10) : 0; });
+      const nextNum = (nums.length ? Math.max(...nums) : 0) + 1;
+      const id = 'P' + String(nextNum).padStart(3, '0');
+      const np = {
+        id, name: fields.name, age: fields.age, sex: fields.sex,
+        phone: fields.phone, email: fields.email, address: fields.address,
+        skinType: fields.skinType, ita: fields.ita, localization: fields.localization,
+        bloodType: fields.bloodType, allergies: fields.allergies,
+        diagnosis: fields.diagnosis, notes: fields.notes,
+        riskLevel: 'low', lastVisit: todayISO(),
+      };
+      patients.push(np);
+      emit();
+      return np;
+    },
+
+    /* Remove a patient from the offline demo store. */
+    deletePatientLocal(id) {
+      const i = patients.findIndex(p => p.id === id);
+      if (i !== -1) { patients.splice(i, 1); emit(); }
+    },
+
     /* Update a patient's demographic/contact details. Writes to the live
        working copy AND the underlying PATIENTS record (which PATIENT_USER
        and the doctor's record-page fallback both reference), then notifies
@@ -322,19 +350,21 @@ const ClinicStore = (function () {
     },
 
     /* Called when a melanoma analysis completes (doctor OR patient portal) */
-    recordAnalysis({ patientId, patientName, dx, dxLabel, confidence, riskLevel }) {
+    recordAnalysis({ patientId, patientName, dx, dxLabel, confidence, riskLevel, scores, recommendation, localization }) {
       const patient = patients.find(p => p.id === patientId);
       analyses.unshift({
-        id: 'L' + Date.now(),
+        id: 'L' + Date.now() + Math.random().toString(36).slice(2, 6),
         patientId,
         patientName: patientName || (patient ? patient.name : 'Unknown'),
         dx, dxLabel, confidence,
         riskLevel: riskLevel === 'moderate' ? 'medium' : riskLevel,
         date: todayISO(), live: true, _ts: Date.now(),
+        scores: scores || {}, recommendation: recommendation || '',
+        localization: localization || (patient ? patient.localization : undefined),
       });
       if (patient) {
         patient.lastVisit = todayISO();
-        if (riskLevel === 'high') patient.riskLevel = 'high';
+        patient.riskLevel = riskLevel === 'moderate' ? 'medium' : riskLevel;
       }
       /* Raise a patient-facing alert so the dashboard's unread count updates */
       if (window.PatientNotifStore && (window.PATIENT_USER || {}).id === patientId) {
@@ -348,6 +378,7 @@ const ClinicStore = (function () {
     },
 
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
+    notify() { emit(); },
   };
 })();
 
@@ -422,6 +453,40 @@ const PatientNotifStore = (function () {
 })();
 window.PatientNotifStore = PatientNotifStore;
 
+/* DoctorNotifStore — reactive wrapper around NOTIFICATIONS_DOCTOR so the
+   doctor Notifications page updates live. Patient-initiated events (e.g.
+   booking an appointment) push a fresh notification here. */
+const DoctorNotifStore = (function () {
+  let list = (typeof NOTIFICATIONS_DOCTOR !== 'undefined' ? NOTIFICATIONS_DOCTOR : []).map(n => ({ ...n }));
+  const subs = new Set();
+  const emit = () => subs.forEach(fn => fn());
+  return {
+    list() { return list; },
+    unreadCount() { return list.filter(n => !n.read).length; },
+    markRead(id) { const n = list.find(x => x.id === id); if (n && !n.read) { n.read = true; emit(); } },
+    markAllRead() {
+      let changed = false;
+      list.forEach(n => { if (!n.read) { n.read = true; changed = true; } });
+      if (changed) emit();
+    },
+    add(notif) {
+      list = [{ id: 'ND' + Date.now(), read: false, time: 'Just now', ...notif }, ...list];
+      emit();
+    },
+    subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
+  };
+})();
+window.DoctorNotifStore = DoctorNotifStore;
+
+function useDoctorNotifs() {
+  const [, force] = useStateLive(0);
+  useEffectLive(() => {
+    const unsub = DoctorNotifStore.subscribe(() => force(x => x + 1));
+    return unsub;
+  }, []);
+  return DoctorNotifStore;
+}
+
 /* usePatientClinic — live analyses + risk record for one patient.
    Re-renders whenever ClinicStore changes (e.g. a new scan). */
 function usePatientClinic(patientId) {
@@ -444,6 +509,60 @@ function usePatientNotifs() {
     return unsub;
   }, []);
   return PatientNotifStore;
+}
+
+/* usePatientChecks — live DB scan history for the logged-in patient, polled
+   from /api/patient/checks. Returns null when the backend is unreachable so
+   callers fall back to the offline ClinicStore. Values are normalized
+   (confidence/scores to 0–1, moderate→medium) so every patient page shows
+   an identical, DB-backed history. */
+function usePatientChecks(patientId, fallbackLoc) {
+  const [checks, setChecks] = useStateLive(null);
+  useEffectLive(() => {
+    let alive = true;
+    const norm = v => (v == null ? 0 : (v > 1 ? v / 100 : v));
+    const load = async () => {
+      try {
+        const r = await apiFetch('/api/patient/checks');
+        const list = (r && r.data) || r;
+        if (!alive || !Array.isArray(list)) return;
+        setChecks(list.map(c => ({
+          ...c,
+          riskLevel: c.riskLevel === 'moderate' ? 'medium' : c.riskLevel,
+          confidence: norm(c.confidence),
+          scores: Object.fromEntries(Object.entries(c.scores || {}).map(([k, v]) => [k, norm(v)])),
+          localization: c.localization || fallbackLoc,
+          _ts: Date.parse(c.date) || 0,
+        })).sort((a, b) => (b._ts || 0) - (a._ts || 0)));
+      } catch (e) { /* backend unreachable — keep null so caller uses store */ }
+    };
+    load();
+    const id = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(id); };
+  }, [patientId]);
+  return checks;
+}
+
+/* usePatientProfile — live DB profile for the logged-in patient (name, age,
+   sex, contact, address, risk, medical fields). Returns null when the backend
+   is unreachable so callers fall back to the offline seed/ClinicStore. Polls
+   so doctor-side or self edits reflect within a few seconds. */
+function usePatientProfile() {
+  const [prof, setProf] = useStateLive(null);
+  useEffectLive(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await apiFetch('/api/patient/profile');
+        const d = (r && r.data) || r;
+        if (alive && d && d.id != null) setProf(d);
+      } catch (e) { /* offline — keep null */ }
+    };
+    load();
+    const id = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  return prof;
 }
 const AppointmentApi = {
   list:   () => apiFetch('/api/appointments'),
@@ -483,8 +602,19 @@ function useAppointments(role) {
 
   /* Actions — write to DB when online, else mutate the demo store */
   const book = async ({ patientId, date, time, duration, reason }) => {
+    const notifyDoctor = () => {
+      if (!window.DoctorNotifStore) return;
+      const pid  = patientId || (window.PATIENT_USER || {}).id;
+      const prec = ClinicStore.patientRecord ? ClinicStore.patientRecord(pid) : null;
+      const pname = (prec && prec.name) || (window.PATIENT_USER || {}).name || 'A patient';
+      window.DoctorNotifStore.add({
+        type: 'appointment',
+        title: 'New appointment booked',
+        message: `${pname} booked ${reason || 'an appointment'} on ${date} at ${time}.`,
+      });
+    };
     if (state.online) {
-      try { await AppointmentApi.book({ patient_id: patientId, date, time, duration, reason }); await refresh(); return; }
+      try { await AppointmentApi.book({ patient_id: patientId, date, time, duration, reason }); notifyDoctor(); await refresh(); return; }
       catch (e) { /* fall through */ }
     }
     ClinicStore.addAppointmentLocal({
@@ -492,6 +622,7 @@ function useAppointments(role) {
       patientName: (window.PATIENT_USER || {}).name, date, time,
       duration: duration || 30, reason: reason || 'Consultation', status: 'scheduled',
     });
+    notifyDoctor();
     setState({ list: offlineList(), online: false });
   };
   const changeStatus = async (appt, status) => {
@@ -754,7 +885,8 @@ Object.assign(window, {
   MODEL_REGISTRY, EOD_BY_AXIS, eodForPatient, ageGroupOf, locZoneOf, AGE_GROUP_LABEL,
   ModelsApi, LiveSim, ClinicStore, useClinic, AppointmentApi, useAppointments, useLive, useSim, AnimatedNumber, LiveBadge,
   simulatePrediction, downloadAnalysisReport,
-  PatientNotifStore, usePatientClinic, usePatientNotifs,
+  PatientNotifStore, usePatientClinic, usePatientNotifs, usePatientProfile, usePatientChecks,
+  DoctorNotifStore, useDoctorNotifs,
 });
 
 /* ═══════════════════════════════════════════════════════════

@@ -51,7 +51,7 @@ function applyTheme(theme) {
    used instead and these are never consulted. */
 const DEMO_ACCOUNTS = (() => {
   const map = {
-    dr_ramaneiss: { password: 'doctor123', user: { username: 'dr_ramaneiss', role: 'doctor', full_name: 'Dr. Ramaneiss', specialization: 'Dermatology' } },
+    dr_ramaneiss: { password: 'dr.ramaneiss123', user: { username: 'dr_ramaneiss', role: 'doctor', full_name: 'Dr. Ramaneiss', specialization: 'Dermatology' } },
   };
   (typeof PATIENT_ACCOUNTS !== 'undefined' ? PATIENT_ACCOUNTS : []).forEach(a => {
     map[a.username] = { password: a.password, user: { username: a.username, role: 'patient', full_name: a.name, patientId: a.patientId } };
@@ -72,6 +72,46 @@ const LoginScreen = ({ onLogin }) => {
   const [form, setForm]   = React.useState({ username: '', password: '' });
   const [error, setError]  = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [mode, setMode] = React.useState('signin');   // 'signin' | 'register' (doctor only)
+  const REG_BLANK = { fullName: '', specialization: '', licenseNumber: '', contactNumber: '', email: '', password: '' };
+  const [reg, setReg] = React.useState(REG_BLANK);
+  const [regError, setRegError] = React.useState('');
+  const [regLoading, setRegLoading] = React.useState(false);
+  const setR = (k, v) => setReg(p => ({ ...p, [k]: v }));
+
+  const handleRegister = async () => {
+    if (!reg.fullName.trim())  { setRegError('Full name is required.'); return; }
+    if (!reg.email.trim())     { setRegError('Email address is required.'); return; }
+    if (!reg.password.trim())  { setRegError('Please choose a password.'); return; }
+    setRegLoading(true); setRegError('');
+    const payload = {
+      fullName: reg.fullName.trim(), specialization: reg.specialization.trim(),
+      licenseNumber: reg.licenseNumber.trim(), contactNumber: reg.contactNumber.trim(),
+      email: reg.email.trim(), password: reg.password,
+    };
+    try {
+      const user = await AuthApi.registerDoctor(payload);   // persists to DB + signs in
+      window.HMS_USER = user;
+      if (window.DOCTOR_USER) Object.assign(window.DOCTOR_USER, {
+        name: payload.fullName, specialty: payload.specialization || 'General',
+        initials: payload.fullName.replace(/^dr\.?\s*/i, '').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(),
+      });
+      onLogin('doctor');
+    } catch (err) {
+      // Offline fallback: register into the in-memory demo accounts so the
+      // preview still works when Flask isn't reachable.
+      const uname = payload.fullName.toLowerCase().replace(/['\u2019.]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      DEMO_ACCOUNTS[uname] = { password: payload.password, user: { username: uname, role: 'doctor', full_name: payload.fullName, specialization: payload.specialization } };
+      window.HMS_USER = { username: uname, role: 'doctor', full_name: payload.fullName, _demo: true };
+      if (window.DOCTOR_USER) Object.assign(window.DOCTOR_USER, {
+        name: payload.fullName, specialty: payload.specialization || 'General',
+        initials: payload.fullName.replace(/^dr\.?\s*/i, '').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(),
+      });
+      onLogin('doctor');
+    } finally {
+      setRegLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!form.username || !form.password) {
@@ -83,6 +123,14 @@ const LoginScreen = ({ onLogin }) => {
     try {
       const user = await AuthApi.login(form.username, form.password);
       window.HMS_USER = user;           // make profile available globally
+      if (user.role === 'doctor' && window.DOCTOR_USER) {
+        // Reflect the logged-in doctor across the portal (greeting, sidebar, etc.)
+        Object.assign(window.DOCTOR_USER, {
+          name: user.name || window.DOCTOR_USER.name,
+          specialty: user.specialty || window.DOCTOR_USER.specialty,
+          initials: user.initials || (user.name ? user.name.replace(/^dr\.?\s*/i, '').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() : window.DOCTOR_USER.initials),
+        });
+      }
       if (user.role === 'patient') {
         const pid = user.patientId || user.patient_id || resolvePatientId(user.username);
         if (pid) setCurrentPatient(pid);
@@ -95,12 +143,19 @@ const LoginScreen = ({ onLogin }) => {
       const demo = DEMO_ACCOUNTS[form.username.trim().toLowerCase()];
       if (demo && demo.password === form.password) {
         window.HMS_USER = { ...demo.user, _demo: true };
+        if (demo.user.role === 'doctor' && window.DOCTOR_USER) {
+          Object.assign(window.DOCTOR_USER, {
+            name: demo.user.full_name || window.DOCTOR_USER.name,
+            specialty: demo.user.specialization || window.DOCTOR_USER.specialty,
+            initials: demo.user.full_name ? demo.user.full_name.replace(/^dr\.?\s*/i, '').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() : window.DOCTOR_USER.initials,
+          });
+        }
         if (demo.user.role === 'patient' && demo.user.patientId) setCurrentPatient(demo.user.patientId);
         onLogin(demo.user.role);
       } else if (demo) {
         setError('Incorrect password for this account.');
       } else {
-        setError('Unknown username. Try dr_ramaneiss / doctor123 or a patient e.g. aisha_rahman / patient123.');
+        setError('Unknown username. Try dr_ramaneiss / dr.ramaneiss123 or a patient e.g. aisha_rahman / aisha.rahman123.');
       }
     } finally {
       setLoading(false);
@@ -188,7 +243,7 @@ const LoginScreen = ({ onLogin }) => {
             </>
           ) : (
             <>
-              <button onClick={() => { setSelectedRole(null); setForm({ username: '', password: '' }); setError(''); }}
+              <button onClick={() => { setSelectedRole(null); setForm({ username: '', password: '' }); setError(''); setMode('signin'); setReg(REG_BLANK); setRegError(''); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
                   color: 'var(--text-muted)', background: 'none', border: 'none',
                   cursor: 'pointer', marginBottom: 24, fontFamily: 'inherit' }}>
@@ -203,6 +258,47 @@ const LoginScreen = ({ onLogin }) => {
                   textTransform: 'capitalize' }}>{selectedRole} Portal</span>
               </div>
 
+              {selectedRole === 'doctor' && mode === 'register' ? (
+                <>
+                  {[
+                    { label: 'Full Name',      key: 'fullName',       placeholder: 'Dr. Sara Lee' },
+                    { label: 'Specialization', key: 'specialization',  placeholder: 'Dermatology' },
+                    { label: 'License Number', key: 'licenseNumber',   placeholder: 'DRM-002-2025' },
+                    { label: 'Contact Number', key: 'contactNumber',   placeholder: '+60 12-345 6789' },
+                    { label: 'Email Address',  key: 'email',           placeholder: 'name@hms.com', type: 'email' },
+                    { label: 'Password',       key: 'password',        placeholder: '••••••••', type: 'password' },
+                  ].map(f => (
+                    <div key={f.key} style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 7 }}>{f.label}</div>
+                      <input type={f.type || 'text'} value={reg[f.key]} placeholder={f.placeholder}
+                        onChange={e => setR(f.key, e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleRegister()}
+                        style={{ width: '100%', padding: '11px 16px', borderRadius: 10,
+                          border: '1.5px solid var(--border)', fontSize: 14,
+                          fontFamily: 'inherit', outline: 'none', color: 'var(--text)', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  ))}
+
+                  {regError && <div style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 14 }}>{regError}</div>}
+
+                  <button onClick={handleRegister} disabled={regLoading}
+                    style={{ width: '100%', padding: '13px', borderRadius: 11,
+                      background: regLoading ? 'var(--text-muted)' : 'var(--primary)',
+                      color: '#fff', fontSize: 15, fontWeight: 700, border: 'none',
+                      cursor: regLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', marginBottom: 12 }}>
+                    {regLoading ? 'Creating account…' : 'Create Account'}
+                  </button>
+
+                  <button onClick={() => { setMode('signin'); setRegError(''); }}
+                    style={{ width: '100%', padding: '11px', borderRadius: 11, background: 'transparent',
+                      color: 'var(--text-muted)', fontSize: 14, fontWeight: 600, border: '1.5px solid var(--border)',
+                      cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Back to Sign In
+                  </button>
+                </>
+              ) : (
+                <>
               {[
                 { label: 'Username', key: 'username', type: 'text',
                   placeholder: selectedRole === 'doctor' ? 'dr_ramaneiss' : 'aisha_rahman' },
@@ -230,10 +326,21 @@ const LoginScreen = ({ onLogin }) => {
                 {loading ? 'Signing in…' : 'Sign In'}
               </button>
 
+              {selectedRole === 'doctor' && (
+                <button onClick={() => { setMode('register'); setError(''); }}
+                  style={{ width: '100%', padding: '12px', borderRadius: 11, background: 'transparent',
+                    color: 'var(--primary)', fontSize: 14, fontWeight: 700, border: '1.5px solid var(--primary)',
+                    cursor: 'pointer', fontFamily: 'inherit', marginBottom: 12 }}>
+                  Register
+                </button>
+              )}
+
               <div style={{ padding: '10px 14px', background: 'var(--surface-2)',
                 borderRadius: 9, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                <strong>Demo:</strong> {selectedRole === 'doctor' ? 'dr_ramaneiss / doctor123' : 'aisha_rahman / patient123'}
+                <strong>Demo:</strong> {selectedRole === 'doctor' ? 'dr_ramaneiss / dr.ramaneiss123' : 'aisha_rahman / aisha.rahman123'}
               </div>
+                </>
+              )}
             </>
           )}
         </div>

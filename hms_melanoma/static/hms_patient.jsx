@@ -7,14 +7,16 @@ const { useState, useRef, useEffect } = React;
 const PatientDashboard = ({ setPage }) => {
   const pt = PATIENT_USER;
   const { analyses, record } = usePatientClinic(pt.id);
+  const dbChecks = usePatientChecks(pt.id, pt.localization);
   const notifStore = usePatientNotifs();
-  const myDetections  = analyses;
+  const myDetections  = dbChecks != null ? dbChecks : analyses;
   const apptState = useAppointments('patient');
   const myAppointments = apptState.list || [];
   const latest  = myDetections[0];
   const nextApt = myAppointments.find(a => a.status === 'scheduled');
   const unread  = notifStore.unreadCount();
-  const riskLevel = (record && record.riskLevel) || pt.riskLevel;
+  const dbProfile = usePatientProfile();
+  const riskLevel = (dbProfile && dbProfile.riskLevel) || (record && record.riskLevel) || pt.riskLevel;
 
   // Detections seeded from history don't carry a recommendation string.
   const RECO = {
@@ -150,7 +152,25 @@ const PatientDashboard = ({ setPage }) => {
 const PatientProfile = () => {
   const pt = PATIENT_USER;
   const { record } = usePatientClinic(pt.id);
-  const person = record || pt;
+  const dbProfile = usePatientProfile();
+  const base = record || pt;
+  // Prefer live DB values so the profile matches the doctor's Patient Record.
+  const person = dbProfile ? {
+    ...base,
+    name: dbProfile.name ?? base.name,
+    age: dbProfile.age ?? base.age,
+    sex: dbProfile.sex ?? base.sex,
+    phone: dbProfile.contact ?? base.phone,
+    email: dbProfile.email ?? base.email,
+    address: dbProfile.address ?? base.address,
+    riskLevel: dbProfile.riskLevel ?? base.riskLevel,
+    skinType: dbProfile.skinType ?? base.skinType,
+    ita: dbProfile.ita ?? base.ita,
+    bloodType: dbProfile.bloodType ?? base.bloodType,
+    allergies: dbProfile.allergies ?? base.allergies,
+    localization: dbProfile.localization ?? base.localization,
+    diagnosis: dbProfile.diagnosis ?? base.diagnosis,
+  } : base;
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
@@ -177,7 +197,10 @@ const PatientProfile = () => {
     ClinicStore.updatePatient(pt.id, patch);
     // Persist to the backend so the doctor's DB-backed Patient Record reflects it
     try {
-      await PatientApi.updateProfile({ contact: patch.phone, address: patch.address });
+      await PatientApi.updateProfile({
+        name: patch.name, age: patch.age, sex: patch.sex,
+        contact: patch.phone, email: patch.email, address: patch.address,
+      });
     } catch (e) { /* backend unreachable — offline demo keeps the client update */ }
     setBusy(false);
     setEditing(false);
@@ -349,6 +372,7 @@ const PatientDetection = ({ setPage }) => {
       if (typeof ClinicStore !== 'undefined') ClinicStore.recordAnalysis({
         patientId: pt.id, patientName: pt.name,
         dx: r.dx, dxLabel: r.dxLabel, confidence: r.confidence, riskLevel: r.riskLevel,
+        scores: r.scores, recommendation: r.recommendation, localization,
       });
     };
 
@@ -715,14 +739,111 @@ const PatientAppointments = () => {
 ════════════════════════════════════════ */
 const PatientResults = () => {
   const pt = PATIENT_USER;
-  const myResults = DETECTIONS.filter(d => d.patientId === pt.id);
+  const { analyses } = usePatientClinic(pt.id);
   const [expanded, setExpanded] = useState(null);
+
+  // Live database records (when the Flask backend is reachable). Prefer these
+  // over the offline store so results survive a hard reload; fall back to the
+  // live store when the backend is unavailable (offline demo).
+  const dbChecks = usePatientChecks(pt.id, pt.localization);
+
+  const myResults = dbChecks != null ? dbChecks : analyses;
+
+  const RECO = {
+    mel: 'Immediate excisional biopsy recommended. Urgent referral to surgical oncology.',
+    bcc: 'Surgical excision recommended. Consult with your dermatologist.',
+    akiec: 'Topical treatment or cryotherapy may be required. Book a follow-up.',
+    nv: 'Benign lesion detected. Continue annual dermoscopic monitoring.',
+    bkl: 'Benign keratosis detected. No immediate treatment required.',
+    df: 'Benign lesion confirmed. No intervention required.',
+    vasc: 'Vascular lesion noted. Dermatologist review recommended.',
+  };
+
+  // ── Chart data derived from this patient's scans (updates live) ──
+  const classData = DX_ORDER
+    .map(dx => ({ label: `${DX_LABELS[dx]} (${dx})`, value: myResults.filter(r => r.dx === dx).length }))
+    .filter(d => d.value > 0);
+  const classTotal = classData.reduce((s, d) => s + d.value, 0);
+
+  const locCounts = {};
+  myResults.forEach(r => {
+    const loc = r.localization || pt.localization || 'unknown';
+    locCounts[loc] = (locCounts[loc] || 0) + 1;
+  });
+  const locData = Object.entries(locCounts)
+    .map(([loc, value]) => ({ label: loc.replace(/\b\w/g, c => c.toUpperCase()).replace('Extremity', 'Ext.'), value }))
+    .sort((a, b) => b.value - a.value);
+
+  // Analyses performed per day, chronological
+  const byDate = {};
+  myResults.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + 1; });
+  const trendData = Object.keys(byDate).sort()
+    .map(date => ({ label: date.slice(5), value: byDate[date] }));
+
+  const hasData = myResults.length > 0;
+
+  const downloadRecord = (r, e) => {
+    e.stopPropagation();
+    downloadAnalysisReport(
+      pt,
+      { ...r, recommendation: r.recommendation || RECO[r.dx] || '', localization: r.localization || pt.localization,
+        eodAxes: (eodForPatient(pt) || {}).axes },
+      ''
+    );
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <TopBar title="My Detection Results" subtitle={`${myResults.length} scan(s) on record`} />
       <PageContent>
-        <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ maxWidth: 1160, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
+          {/* Left column: charts — update dynamically as more scans are run */}
+          {hasData && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Skin Lesion Class Distribution</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{classTotal.toLocaleString()} analysis(es) performed — grows as scans are done</div>
+                {classData.map(d => {
+                  const pct = classTotal ? d.value / classTotal : 0;
+                  return (
+                    <div key={d.label} style={{ marginBottom: 9 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ color: 'var(--text)' }}>{d.label}</span>
+                        <span style={{ fontWeight: 600 }}>{d.value.toLocaleString()} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({(pct * 100).toFixed(1)}%)</span></span>
+                      </div>
+                      <div style={{ height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct * 100}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width 0.6s ease' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Lesion Location Diversity</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Anatomical site of your analyses — grows as scans are done</div>
+                <HBarChart data={locData} color="var(--primary)" />
+              </Card>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Skin-Lesion Analyses Performed</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>Scans over time</div>
+                {trendData.length >= 2
+                  ? <AreaTrend data={trendData} height={150} />
+                  : <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, background: 'var(--surface-2)', borderRadius: 9 }}>
+                      Run at least two scans to see your analyses trend over time.
+                    </div>}
+              </Card>
+            </div>
+          )}
+
+          {/* Right column: past scan records */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Section divider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Past Scan Analysis Records</div>
+            <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+          </div>
+
           {myResults.length === 0 ? <EmptyState icon="fileText" message="No results yet — run a scan to get started" /> :
             myResults.map(r => {
               const open = expanded === r.id;
@@ -737,6 +858,7 @@ const PatientResults = () => {
                       <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{r.date} · {(r.confidence * 100).toFixed(0)}% confidence</div>
                     </div>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <Btn variant="secondary" size="sm" icon="download" onClick={e => downloadRecord(r, e)}>Report</Btn>
                       <RiskBadge level={r.riskLevel} />
                       <Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} style={{ color: 'var(--text-muted)' }} />
                     </div>
@@ -745,10 +867,10 @@ const PatientResults = () => {
                   {open && (
                     <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                       <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.7, marginBottom: 14, background: 'var(--surface-2)', padding: '10px 14px', borderRadius: 9 }}>
-                        {r.recommendation}
+                        {r.recommendation || RECO[r.dx] || 'Please consult your dermatologist.'}
                       </div>
                       {DX_ORDER.map(dx => (
-                        <ConfidenceBar key={dx} label={DX_LABELS[dx]} value={r.scores[dx] || 0} isMain={dx === r.dx} />
+                        <ConfidenceBar key={dx} label={DX_LABELS[dx]} value={(r.scores || {})[dx] || 0} isMain={dx === r.dx} />
                       ))}
                     </div>
                   )}
@@ -756,6 +878,7 @@ const PatientResults = () => {
               );
             })
           }
+          </div>
         </div>
       </PageContent>
     </div>

@@ -84,9 +84,18 @@ function patientUsername(name) {
     .replace(/[^a-z0-9]+/g, '_')      // any run of non-alphanumerics → _
     .replace(/^_+|_+$/g, '');         // trim leading/trailing _
 }
+/* Password derived from the name: dot-separated words + '123', e.g.
+   "Aisha Rahman" → aisha.rahman123, "Ahmed Al-Rashid" → ahmed.al.rashid123. */
+function accountPassword(name) {
+  return name.toLowerCase()
+    .replace(/['\u2019.]/g, '')       // drop apostrophes / dots
+    .replace(/[^a-z0-9]+/g, '.')      // any run of non-alphanumerics → .
+    .replace(/^\.+|\.+$/g, '')        // trim leading/trailing .
+    + '123';
+}
 const PATIENT_ACCOUNTS = PATIENTS.map(p => ({
   username: patientUsername(p.name),
-  password: 'patient123',
+  password: accountPassword(p.name),
   patientId: p.id,
   name: p.name,
 }));
@@ -211,6 +220,7 @@ async function apiFetch(path, options = {}) {
 
 const AuthApi = {
   login:  (username, password) => apiFetch('/api/auth/login', { method:'POST', body: JSON.stringify({ username, password }) }),
+  registerDoctor: (fields)     => apiFetch('/api/auth/register', { method:'POST', body: JSON.stringify(fields) }),
   logout: ()                   => apiFetch('/api/auth/logout', { method:'POST' }),
   me:     ()                   => apiFetch('/api/auth/me'),
 };
@@ -218,6 +228,8 @@ const AuthApi = {
 const DoctorApi = {
   dashboard:      ()                                            => apiFetch('/api/doctor/dashboard'),
   patients:       (search = '')                                 => apiFetch(`/api/doctor/patients${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  addPatient:     (fields)                                      => apiFetch('/api/doctor/patients', { method:'POST', body: JSON.stringify(fields) }),
+  deletePatient:  (id)                                          => apiFetch(`/api/doctor/patients/${id}`, { method:'DELETE' }),
   patientDetail:  (id)                                          => apiFetch(`/api/doctor/patients/${id}`),
   addRecord:      (id, record)                                  => apiFetch(`/api/doctor/patients/${id}/add-record`, { method:'POST', body: JSON.stringify(record) }),
   fairnessMetrics: ()                                           => apiFetch('/api/doctor/fairness-metrics'),
