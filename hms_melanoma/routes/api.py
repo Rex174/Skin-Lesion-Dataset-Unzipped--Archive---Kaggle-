@@ -84,6 +84,83 @@ def register_doctor():
     }, message="Doctor registered")
 
 
+@api_bp.route("/auth/register-patient", methods=["POST"])
+def register_patient_selfservice():
+    """Self-service patient registration for INDEPENDENT patients (no assigned
+    doctor). Mirrors the doctor's Add-Patient fields, creates User(role=patient)
+    + Patient with assigned_doctor_id=None, signs them in, and returns the
+    profile. Password follows the name rule (e.g. 'Nadia Hassan' -> nadia.hassan123)."""
+    import re as _re
+    from datetime import datetime as _dt
+    body = request.get_json(force=True) or {}
+    name = str(body.get("name", "")).strip()
+    if not name:
+        return _err("Patient name is required", 400)
+    try:
+        age = int(body.get("age"))
+    except (TypeError, ValueError):
+        return _err("A valid age is required", 400)
+
+    today = _dt.today().date()
+    try:
+        dob = today.replace(year=today.year - age)
+    except ValueError:
+        dob = today.replace(year=today.year - age, day=28)
+
+    base = _re.sub(r"[^a-z0-9]+", "_",
+                   name.lower().replace("'", "").replace("\u2019", "").replace(".", "")
+                   ).strip("_") or "patient"
+    username = base
+    n = 1
+    while User.query.filter_by(username=username).first():
+        n += 1
+        username = f"{base}{n}"
+
+    email = str(body.get("email", "")).strip()
+    if not email or User.query.filter_by(email=email).first():
+        email = f"{username}@melanoscan.local"
+
+    default_pw = _re.sub(r"[^a-z0-9]+", ".",
+                         name.lower().replace("'", "").replace("\u2019", "").replace(".", "")
+                         ).strip(".") + "123"
+
+    user = User(username=username, email=email, role="patient")
+    user.set_password(body.get("password") or default_pw)
+    db.session.add(user)
+    db.session.flush()
+
+    patient = Patient(
+        user_id           = user.id,
+        full_name         = name,
+        date_of_birth     = dob,
+        sex               = str(body.get("sex", "")).lower() or "female",
+        contact_number    = body.get("phone"),
+        address           = body.get("address"),
+        email             = email,
+        skin_type         = body.get("skinType"),
+        ita               = (int(body["ita"]) if str(body.get("ita", "")).lstrip("-").isdigit() else None),
+        localization      = body.get("localization"),
+        blood_type        = body.get("bloodType"),
+        allergies         = body.get("allergies"),
+        known_diagnosis   = body.get("diagnosis"),
+        clinical_notes    = body.get("notes"),
+        assigned_doctor_id = None,          # independent — no attending doctor
+    )
+    db.session.add(patient)
+    db.session.commit()
+
+    session["user_id"]  = user.id
+    session["username"] = user.username
+    session["role"]     = "patient"
+
+    return _ok({
+        "id": patient.id, "username": username, "role": "patient",
+        "name": patient.full_name, "age": patient.age, "sex": patient.sex,
+        "ageGroup": patient.age_group, "independent": True,
+        "assignedDoctor": None,
+    }, message="Patient registered")
+
+
 # ── Inline prediction (no TF import at module level — avoids startup crash) ──
 def _run_predict(image_path, model_key, model_path, label_map_path,
                  class_labels, class_risk,
@@ -119,7 +196,7 @@ def _run_predict(image_path, model_key, model_path, label_map_path,
 #  FAIRNESS / EOD HELPERS  — parsed from the REAL Phase-1 results
 #  (phase1_outputs/results/all_results.json). Fairness is measured on
 #  AGE GROUP, SEX and LESION LOCATION (HAM10000 has no skin-tone labels).
-#  Baseline = Model A (Standard Baseline); deployed = Model E (Full Framework).
+#  Baseline = Model A (Standard Baseline); deployed = Model E (MelBoost 3.0).
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Ordered registry: (json_key, api_key, display_name, mitigation, is_best, note)
@@ -136,13 +213,13 @@ _MODEL_ORDER = [
     ("Model_D_cGAN_Only",         "cgan_only",     "Model D — cGAN Only",
      "Conditional GAN image augmentation", False,
      "Synthetic minority-subgroup images preserve strong accuracy while lowering age- and sex-based bias."),
-    ("Model_E_Full_Framework",    "enhanced_v2",   "Model E — Full Framework",
-     "Sampling + Reweighting + cGAN (full hybrid framework)", True,
-     "The full hybrid data-centric framework — the deployed model. Lowest bias on every axis, trading raw accuracy for substantially fairer predictions."),
+    ("Model_E_melboost_3_0",      "enhanced_v2",   "Model E — MelBoost 3.0",
+     "Sampling + Reweighting + cGAN + melanoma-sensitivity boosting", True,
+     "The deployed hybrid data-centric framework tuned to maximise melanoma detection (MelBoost 3.0). Melanoma recall rises to 53% — the highest of any debiased model — while sex- and age-based bias stay well below the baseline."),
 ]
 
 _BASELINE_JSON_KEY = "Model_A_Standard_Baseline"
-_DEPLOYED_JSON_KEY = "Model_E_Full_Framework"
+_DEPLOYED_JSON_KEY = "Model_E_melboost_3_0"
 
 
 def _load_results():
@@ -164,6 +241,38 @@ def _axis_eods(model_json):
     sex = fair.get("sex", {}).get("EOD")
     loc = fair.get("loc_zone", {}).get("EOD")
     return age, sex, loc
+
+
+BASELINE_KEY = "Model_A_Standard_Baseline"
+
+
+def _worst_group_and_verdict(results, model_key, axis="age_group"):
+    """Worst-group melanoma TPR + levelling-down verdict vs the baseline."""
+    def tprs(k):
+        d = results.get(k, {}).get("fairness", {}).get(axis, {}).get("TPR_per_group", {})
+        return {g: v for g, v in d.items() if v is not None and not (isinstance(v, float) and v != v)}
+
+    base, cand = tprs(BASELINE_KEY), tprs(model_key)
+    if not cand or not base:
+        return None, "unknown"
+
+    groups    = [g for g in base if g in cand]
+    worst_grp = min(groups, key=lambda g: cand[g])
+    worst_tpr = cand[worst_grp]
+
+    if model_key == BASELINE_KEY:
+        return worst_tpr, "baseline"
+
+    n_worse  = sum(1 for g in groups if cand[g] - base[g] < -0.01)
+    n_better = sum(1 for g in groups if cand[g] - base[g] >  0.01)
+
+    if n_worse == len(groups):
+        verdict = "levelling_down"
+    elif n_better > 0 and worst_tpr >= base[worst_grp]:
+        verdict = "uplift"
+    else:
+        verdict = "mixed"
+    return worst_tpr, verdict
 
 
 def _build_model_comparison():
@@ -189,7 +298,7 @@ def _build_model_comparison():
         bias_red = None
         if base_mean and mean_eod is not None and base_mean > 0:
             bias_red = round((1 - mean_eod / base_mean) * 100)
-        out.append({
+        entry = {
             "key": akey, "name": name, "arch": "EfficientNet-B0", "mitigation": mitigation,
             "accuracy":       sm.get("accuracy"),
             "auc":            sm.get("auc_macro"),
@@ -201,7 +310,12 @@ def _build_model_comparison():
             "worstEOD": round(worst_eod, 3) if worst_eod is not None else None,
             "biasReduction": bias_red,
             "isBest": is_best, "note": note,
-        })
+        }
+        worst_tpr, verdict = _worst_group_and_verdict(res, jkey)
+        entry["worstGroupTPR"] = round(worst_tpr, 4) if worst_tpr is not None else None
+        entry["verdict"]       = verdict
+        entry["melMissed"]     = round((1 - entry["melSensitivity"]) * 100) if entry["melSensitivity"] is not None else None
+        out.append(entry)
     return out or _MODEL_REGISTRY_FALLBACK
 
 
@@ -211,8 +325,8 @@ def _eod_by_axis():
     a = _axis_eods(res.get(_BASELINE_JSON_KEY, {}))
     e = _axis_eods(res.get(_DEPLOYED_JSON_KEY, {}))
     # Fall back to known real values if JSON missing
-    a = [v if v is not None else d for v, d in zip(a, (0.3404, 0.0840, 0.6800))]
-    e = [v if v is not None else d for v, d in zip(e, (0.0299, 0.0129, 0.3467))]
+    a = [v if v is not None else d for v, d in zip(a, (0.2237, 0.1541, 0.6800))]
+    e = [v if v is not None else d for v, d in zip(e, (0.1154, 0.0273, 0.5938))]
     return {
         "age":      {"axisLabel": "Age group",       "baseline": a[0], "enhanced": e[0]},
         "sex":      {"axisLabel": "Sex",             "baseline": a[1], "enhanced": e[1]},
@@ -276,30 +390,35 @@ def _enrich_eod(result, age_group, sex, localization):
 # Fallback (used only if all_results.json is unreadable) — REAL Phase-1 numbers.
 _MODEL_REGISTRY_FALLBACK = [
     {"key": "baseline", "name": "Model A — Standard Baseline", "arch": "EfficientNet-B0",
-     "mitigation": "None (original imbalanced HAM10000)", "accuracy": 0.8596, "auc": 0.9836,
-     "melSensitivity": 0.4578, "eodAge": 0.3404, "eodSex": 0.0840, "eodLoc": 0.6800,
-     "meanEOD": 0.368, "worstEOD": 0.680, "biasReduction": 0, "isBest": False,
-     "note": "Highest accuracy, largest fairness gaps."},
+     "mitigation": "None (original imbalanced HAM10000)", "accuracy": 0.8609, "auc": 0.9818,
+     "melSensitivity": 0.3916, "eodAge": 0.2237, "eodSex": 0.1541, "eodLoc": 0.6800,
+     "meanEOD": 0.353, "worstEOD": 0.680, "biasReduction": 0, "isBest": False,
+     "worstGroupTPR": 0.3148, "verdict": "baseline", "melMissed": 61,
+     "note": "No bias mitigation. Highest raw accuracy, but misses 61 of every 100 melanomas."},
     {"key": "sampling_only", "name": "Model B — Sampling Only", "arch": "EfficientNet-B0",
-     "mitigation": "Intersectional stratified sampling", "accuracy": 0.7917, "auc": 0.9475,
-     "melSensitivity": 0.2590, "eodAge": 0.0318, "eodSex": 0.0361, "eodLoc": 0.3438,
-     "meanEOD": 0.137, "worstEOD": 0.344, "biasReduction": 63, "isBest": False,
-     "note": "Sampling sharply reduces age/sex bias."},
+     "mitigation": "Intersectional stratified sampling", "accuracy": 0.7890, "auc": 0.9492,
+     "melSensitivity": 0.2651, "eodAge": 0.0419, "eodSex": 0.0499, "eodLoc": 0.3438,
+     "meanEOD": 0.145, "worstEOD": 0.344, "biasReduction": 59, "isBest": False,
+     "worstGroupTPR": 0.2308, "verdict": "levelling_down", "melMissed": 73,
+     "note": "Low EOD achieved by degrading melanoma detection below baseline for every group."},
     {"key": "reweight_only", "name": "Model C — Reweighting Only", "arch": "EfficientNet-B0",
-     "mitigation": "Adaptive distribution-aware reweighting", "accuracy": 0.6411, "auc": 0.8803,
-     "melSensitivity": 0.3012, "eodAge": 0.0505, "eodSex": 0.1201, "eodLoc": 0.3939,
-     "meanEOD": 0.188, "worstEOD": 0.394, "biasReduction": 49, "isBest": False,
-     "note": "Least accurate; worsens sex EOD."},
+     "mitigation": "Adaptive distribution-aware reweighting", "accuracy": 0.6533, "auc": 0.8899,
+     "melSensitivity": 0.2771, "eodAge": 0.0670, "eodSex": 0.0830, "eodLoc": 0.3200,
+     "meanEOD": 0.157, "worstEOD": 0.320, "biasReduction": 56, "isBest": False,
+     "worstGroupTPR": 0.2407, "verdict": "levelling_down", "melMissed": 72,
+     "note": "Low EOD achieved by degrading melanoma detection below baseline for every group."},
     {"key": "cgan_only", "name": "Model D — cGAN Only", "arch": "EfficientNet-B0",
-     "mitigation": "Conditional GAN image augmentation", "accuracy": 0.8046, "auc": 0.9535,
-     "melSensitivity": 0.2831, "eodAge": 0.0484, "eodSex": 0.0285, "eodLoc": 0.4062,
-     "meanEOD": 0.161, "worstEOD": 0.406, "biasReduction": 56, "isBest": False,
-     "note": "Strong accuracy with lower age/sex bias."},
-    {"key": "enhanced_v2", "name": "Model E — Full Framework", "arch": "EfficientNet-B0",
-     "mitigation": "Sampling + Reweighting + cGAN (full hybrid framework)", "accuracy": 0.7327, "auc": 0.9276,
-     "melSensitivity": 0.2892, "eodAge": 0.0299, "eodSex": 0.0129, "eodLoc": 0.3467,
-     "meanEOD": 0.130, "worstEOD": 0.347, "biasReduction": 65, "isBest": True,
-     "note": "Deployed model — lowest bias on every axis."},
+     "mitigation": "Conditional GAN image augmentation", "accuracy": 0.8053, "auc": 0.9536,
+     "melSensitivity": 0.2831, "eodAge": 0.0621, "eodSex": 0.0285, "eodLoc": 0.3750,
+     "meanEOD": 0.155, "worstEOD": 0.375, "biasReduction": 56, "isBest": False,
+     "worstGroupTPR": 0.2308, "verdict": "levelling_down", "melMissed": 72,
+     "note": "Low EOD achieved by degrading melanoma detection below baseline for every group."},
+    {"key": "enhanced_v2", "name": "Model E — MelBoost 3.0", "arch": "EfficientNet-B0",
+     "mitigation": "Sampling + Reweighting + cGAN + melanoma-sensitivity boosting", "accuracy": 0.7327, "auc": 0.9324,
+     "melSensitivity": 0.5301, "eodAge": 0.1154, "eodSex": 0.0273, "eodLoc": 0.5938,
+     "meanEOD": 0.246, "worstEOD": 0.594, "biasReduction": 30, "isBest": True,
+     "worstGroupTPR": 0.5000, "verdict": "uplift", "melMissed": 47,
+     "note": "The only model where every demographic group improves over the baseline. Detects 53% of melanomas vs 39% baseline, while cutting age and sex bias."},
 ]
 
 
@@ -335,6 +454,8 @@ def api_login():
             profile.update({
                 "name": pat.full_name, "age": pat.age,
                 "sex": pat.sex, "ageGroup": pat.age_group,
+                "independent": pat.assigned_doctor_id is None,
+                "patientDbId": pat.id,
             })
 
     return _ok(profile)
@@ -995,7 +1116,7 @@ def patient_history():
 @login_required
 def models_comparison():
     """Metrics for ALL five models (A–E) parsed from the real
-    phase1_outputs/results/all_results.json. Model E (Full Framework) is
+    phase1_outputs/results/all_results.json. Model E (MelBoost 3.0) is
     flagged isBest. Falls back to real baked-in numbers if the JSON is absent."""
     return _ok(_build_model_comparison())
 
@@ -1023,10 +1144,10 @@ def doctor_analytics_live():
     dep  = res.get(_DEPLOYED_JSON_KEY, {})
     sm   = dep.get("standard_metrics", {})
     acc  = sm.get("accuracy", 0.7327)
-    auc  = sm.get("auc_macro", 0.9276)
+    auc  = sm.get("auc_macro", 0.9324)
     age, sex, loc = _axis_eods(dep)
     axis_vals = [v for v in (age, sex, loc) if v is not None]
-    mean_eod = round(sum(axis_vals) / len(axis_vals), 3) if axis_vals else 0.130
+    mean_eod = round(sum(axis_vals) / len(axis_vals), 3) if axis_vals else 0.246
 
     # ── Class distribution of ANALYSES performed (grows as scans are done) ──
     DX_KEYS  = ["nv", "mel", "bkl", "bcc", "akiec", "vasc", "df"]
