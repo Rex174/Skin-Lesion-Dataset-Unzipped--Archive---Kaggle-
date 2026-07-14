@@ -42,7 +42,7 @@ class Config:
     MODEL_SAMPLING    = str(_MODELS_DIR / "Model_B_Sampling_Only_final.h5")
     MODEL_REWEIGHT    = str(_MODELS_DIR / "Model_C_Reweighting_Only_final.h5")
     MODEL_CGAN        = str(_MODELS_DIR / "Model_D_cGAN_Only_final.h5")
-    MODEL_ENHANCED_V2 = str(_MODELS_DIR / "Model_E_Full_Framework_final.h5")   # deployed best
+    MODEL_ENHANCED_V2 = str(_MODELS_DIR / "Model_E_melboost_3_0_final.h5")   # deployed best
     # Registry of every trained model (key must match model_paths.json)
     ALL_MODELS = {
         "baseline":      MODEL_BASELINE,
