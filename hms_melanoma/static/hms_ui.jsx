@@ -172,7 +172,8 @@ const Sidebar = ({ role, page, setPage, user, onLogout }) => {
     { id:'messages',      label:'Messages',           icon:'message'   },
     { id:'notifications', label:'Notifications',      icon:'bell'      },
   ];
-  const nav = role === 'doctor' ? doctorNav : patientNav;
+  const nav = role === 'doctor' ? doctorNav : patientNav
+    .filter(item => !((window.PATIENT_USER || {}).independent && (item.id === 'appointments' || item.id === 'messages')));
   const unread = (typeof useUnread === 'function') ? useUnread(role) : 0;
 
   return (
@@ -283,26 +284,55 @@ const BarChart = ({ data, height = 180, colorFn }) => {
 };
 
 /* ── GroupedBarChart — two series per label (e.g. baseline vs deployed) ── */
-const GroupedBarChart = ({ data, height = 200, max, seriesA = { key: 'baseline', label: 'Baseline (Model A)', color: 'var(--danger)' }, seriesB = { key: 'enhanced', label: 'Deployed (Model E)', color: 'var(--success)' }, asPercent = false, decimals = 3 }) => {
+const GroupedBarChart = ({ data, height = 200, max, seriesA = { key: 'baseline', label: 'Baseline (Model A)', color: 'var(--danger)' }, seriesB = { key: 'enhanced', label: 'Deployed (Model E)', color: 'var(--success)' }, asPercent = false, decimals = 3, lowerIsBetter = false }) => {
   const hi = max != null ? max : Math.max(...data.flatMap(d => [d[seriesA.key], d[seriesB.key]]));
   const fmt = v => asPercent ? `${(v * 100).toFixed(0)}%` : v.toFixed(decimals);
+  const [hover, setHover] = useState(null);   // hovered group index
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const wrapRef = useRef(null);
+
+  const onMove = (e, i) => {
+    const box = wrapRef.current && wrapRef.current.getBoundingClientRect();
+    if (box) setPos({ x: e.clientX - box.left, y: e.clientY - box.top });
+    setHover(i);
+  };
+
+  const hd = hover != null ? data[hover] : null;
+  let tip = null;
+  if (hd) {
+    const a = hd[seriesA.key], b = hd[seriesB.key];
+    const abs = b - a;
+    const rel = a !== 0 ? (abs / a) * 100 : null;
+    // "improved" = deployed better than baseline (context-aware)
+    const improved = lowerIsBetter ? b < a : b > a;
+    tip = { a, b, abs, rel, improved };
+  }
+
   return (
-    <div>
+    <div ref={wrapRef} style={{ position: 'relative' }} onMouseLeave={() => setHover(null)}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height, padding: '0 4px' }}>
-        {data.map(d => (
-          <div key={d.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {data.map((d, i) => {
+          const active = hover === i;
+          const dim = hover != null && !active;
+          return (
+          <div key={d.label}
+            onMouseEnter={e => onMove(e, i)} onMouseMove={e => onMove(e, i)}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer',
+                     opacity: dim ? 0.4 : 1, transition: 'opacity .18s ease' }}>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 5, width: '100%', height: height - 34 }}>
               {[seriesA, seriesB].map(s => (
                 <div key={s.key} style={{ flex: 1, maxWidth: 34, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
                   <div style={{ fontSize: 9.5, fontWeight: 700, color: s.color, marginBottom: 3 }}>{fmt(d[s.key])}</div>
-                  <div style={{ width: '100%', height: hi > 0 ? `${(d[s.key] / hi) * 100}%` : '0%', background: s.color, borderRadius: '4px 4px 0 0', minHeight: 3, transition: 'height 0.9s ease' }} />
+                  <div style={{ width: '100%', height: hi > 0 ? `${(d[s.key] / hi) * 100}%` : '0%', background: s.color, borderRadius: '4px 4px 0 0', minHeight: 3,
+                                boxShadow: active ? `0 0 0 2px color-mix(in oklch, ${s.color} 45%, transparent)` : 'none',
+                                transition: 'height 0.9s ease, box-shadow .18s ease' }} />
                 </div>
               ))}
             </div>
             <div style={{ width: '100%', height: 1, background: 'var(--border)' }} />
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 5, textAlign: 'center', lineHeight: 1.3 }}>{d.label}</div>
+            <div style={{ fontSize: 10, color: active ? 'var(--text)' : 'var(--text-muted)', fontWeight: active ? 700 : 400, marginTop: 5, textAlign: 'center', lineHeight: 1.3 }}>{d.label}</div>
           </div>
-        ))}
+        );})}
       </div>
       <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 12, fontSize: 11 }}>
         {[seriesA, seriesB].map(s => (
@@ -312,6 +342,31 @@ const GroupedBarChart = ({ data, height = 200, max, seriesA = { key: 'baseline',
           </div>
         ))}
       </div>
+
+      {tip && (
+        <div style={{ position: 'absolute', left: Math.max(4, Math.min(pos.x + 12, (wrapRef.current ? wrapRef.current.offsetWidth : 300) - 190)), top: Math.max(0, pos.y - 12),
+                      pointerEvents: 'none', zIndex: 40, width: 182, background: 'var(--text)', color: 'var(--surface)',
+                      borderRadius: 10, padding: '10px 12px', boxShadow: 'var(--shadow-md)', fontSize: 11.5, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 12.5 }}>{hd.label}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ opacity: 0.75 }}>{seriesA.label}</span><span style={{ fontWeight: 700 }}>{fmt(tip.a)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ opacity: 0.75 }}>{seriesB.label}</span><span style={{ fontWeight: 700 }}>{fmt(tip.b)}</span>
+          </div>
+          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid color-mix(in oklch, var(--surface) 22%, transparent)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ opacity: 0.75 }}>Change</span>
+            <span style={{ fontWeight: 800, color: tip.improved ? 'var(--success)' : 'var(--danger)' }}>
+              {(tip.abs >= 0 ? '+' : '') + fmt(tip.abs)}
+            </span>
+          </div>
+          <div style={{ marginTop: 5, fontSize: 10.5, opacity: 0.85 }}>
+            {lowerIsBetter
+              ? (tip.improved ? 'Fairness gap narrows under the deployed model.' : 'Gap widens vs baseline.')
+              : (tip.improved ? 'Detection improves for this group.' : 'Detection drops vs baseline.')}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

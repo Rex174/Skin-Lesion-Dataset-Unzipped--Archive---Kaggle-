@@ -51,7 +51,9 @@ const PatientDashboard = ({ setPage }) => {
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <Btn onClick={() => setPage('detection')} style={{ background: '#fff', color: 'var(--primary)' }} icon="scan">New Scan</Btn>
-              <Btn onClick={() => setPage('appointments')} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }} icon="calendar">Book Appointment</Btn>
+              {!pt.independent && (
+                <Btn onClick={() => setPage('appointments')} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }} icon="calendar">Book Appointment</Btn>
+              )}
             </div>
           </div>
           <div style={{ opacity: 0.15, fontSize: 80 }}>🩺</div>
@@ -60,7 +62,9 @@ const PatientDashboard = ({ setPage }) => {
         {/* Stats */}
         <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
           <StatCard icon="scan"     label="Total Scans"        value={myDetections.length}    sub="All-time analyses" />
+          {!pt.independent && (
           <StatCard icon="calendar" label="Upcoming Appt"      value={nextApt ? '1' : '0'}   sub={nextApt ? `${nextApt.date} at ${nextApt.time}` : 'None scheduled'} />
+          )}
           <StatCard icon="bell"     label="Unread Alerts"      value={unread}                 sub="Tap to view" iconColor="var(--warning)" />
           <StatCard icon="heart"    label="Risk Level"         value={riskLevel === 'high' ? '⚠ High' : riskLevel === 'medium' ? 'Moderate' : 'Low'} sub="Current assessment" iconColor={riskLevel === 'high' ? 'var(--danger)' : 'var(--success)'} />
         </div>
@@ -89,6 +93,7 @@ const PatientDashboard = ({ setPage }) => {
           )}
 
           {/* Next appointment */}
+          {!pt.independent && (
           <Card>
             <SectionHeader title="Next Appointment" action={<Btn variant="ghost" size="sm" onClick={() => setPage('appointments')}>Manage</Btn>} />
             {nextApt ? (
@@ -115,6 +120,7 @@ const PatientDashboard = ({ setPage }) => {
               </div>
             )}
           </Card>
+          )}
 
           {/* Quick actions */}
           <Card style={{ gridColumn: '1 / -1' }}>
@@ -126,7 +132,7 @@ const PatientDashboard = ({ setPage }) => {
                 { icon: 'fileText', label: 'View My Results',  page: 'results',      color: 'var(--success)'   },
                 { icon: 'message',  label: 'Message Doctor',   page: 'messages',     color: 'var(--secondary)' },
                 { icon: 'user',     label: 'My Profile',       page: 'profile',      color: 'var(--accent)'    },
-              ].map(q => (
+              ].filter(q => !(pt.independent && (q.page === 'appointments' || q.page === 'messages'))).map(q => (
                 <button key={q.label} onClick={() => setPage(q.page)} style={{
                   flex: 1, minWidth: 120, padding: '16px 12px', borderRadius: 12,
                   border: '1px solid var(--border)', background: 'var(--surface-2)',
@@ -265,13 +271,19 @@ const PatientProfile = () => {
 
             <Card>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>My Doctor</div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <Avatar name={DOCTOR_USER.name} size={38} />
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{DOCTOR_USER.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{DOCTOR_USER.specialty}</div>
+              {person.independent ? (
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  No attending doctor assigned. You are registered as an independent patient.
                 </div>
-              </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <Avatar name={DOCTOR_USER.name} size={38} />
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{DOCTOR_USER.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{DOCTOR_USER.specialty}</div>
+                  </div>
+                </div>
+              )}
             </Card>
           </div>
 
@@ -314,7 +326,7 @@ const PatientProfile = () => {
                   ['Allergies', person.allergies],
                   ['Primary Lesion Site', person.localization],
                   ['Known Condition', DX_LABELS[person.diagnosis] || person.diagnosis],
-                  ['Attending Doctor', 'Dr. Ramaneiss Pillai'],
+                  ['Attending Doctor', person.independent ? 'None' : 'Dr. Ramaneiss Pillai'],
                 ].map(([k, v]) => (
                   <div key={k} style={{ padding: '12px', background: 'var(--surface-2)', borderRadius: 9 }}>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>{k}</div>
@@ -536,7 +548,7 @@ const PatientDetection = ({ setPage }) => {
               </div>
               <div style={{ padding: '8px 12px', background: 'var(--primary-light)', borderRadius: 8,
                 fontSize: 11, color: 'var(--primary-dark)', marginBottom: 16 }}>
-                🛡 Analysed by Enhanced Model v2 — trained with intersectional bias correction across age, sex & anatomical site
+                🛡 Analysed by Model E — MelBoost 3.0 — trained with intersectional bias correction across age, sex & anatomical site
               </div>
               <Divider />
               <div style={{ fontWeight: 700, fontSize: 14, margin: '16px 0 12px' }}>Probability by Condition</div>
@@ -565,7 +577,7 @@ const PatientDetection = ({ setPage }) => {
                     <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>Fair &amp; Bias-Corrected Result</div>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
-                    Equal Opportunity Difference on the protected axes you sit on, comparing the baseline model with the deployed Full Framework.
+                    Equal Opportunity Difference on the protected axes you sit on, comparing the baseline model with the deployed MelBoost 3.0 model.
                   </div>
 
                   {/* Aggregate reduction */}
@@ -598,10 +610,12 @@ const PatientDetection = ({ setPage }) => {
             })()}
 
             <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Doctor's Recommendation</div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>{pt.independent ? 'Recommendation' : "Doctor's Recommendation"}</div>
               <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.7, marginBottom: 16 }}>{result.recommendation}</div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <Btn icon="calendar" onClick={() => setPage && setPage('appointments')}>Book Appointment</Btn>
+                {!pt.independent && (
+                  <Btn icon="calendar" onClick={() => setPage && setPage('appointments')}>Book Appointment</Btn>
+                )}
                 <Btn variant="secondary" icon="download" onClick={() => downloadAnalysisReport(
                   pt,
                   { ...result, localization, date: new Date().toISOString().slice(0, 10), eodAxes: (eodForPatient(pt) || {}).axes },
@@ -620,9 +634,13 @@ const PatientDetection = ({ setPage }) => {
 /* ════════════════════════════════════════
    PATIENT APPOINTMENTS
 ════════════════════════════════════════ */
-const PatientAppointments = () => {
+const PatientAppointments = ({ setPage }) => {
   const pt = PATIENT_USER;
   const { list, online, book, changeStatus } = useAppointments('patient');
+  const rescheduleAppt = () => {
+    window.__pendingMessageDraft = 'Hi doctor, I would like to reschedule my appointment';
+    if (setPage) setPage('messages');
+  };
   const upcoming  = (list || []).filter(a => a.status === 'scheduled');
   const past      = (list || []).filter(a => a.status !== 'scheduled');
   const [booking, setBooking] = useState(false);
@@ -703,7 +721,10 @@ const PatientAppointments = () => {
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{a.reason}</div>
                     <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Dr. Ramaneiss · {a.time} · {a.duration} min</div>
                   </div>
-                  <Btn variant="danger" size="sm" onClick={() => changeStatus(a, 'cancelled')}>Cancel</Btn>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <Btn variant="secondary" size="sm" onClick={rescheduleAppt}>Reschedule</Btn>
+                    <Btn variant="danger" size="sm" onClick={() => changeStatus(a, 'cancelled')}>Cancel</Btn>
+                  </div>
                 </div>
               ))
             }
@@ -759,29 +780,6 @@ const PatientResults = () => {
     vasc: 'Vascular lesion noted. Dermatologist review recommended.',
   };
 
-  // ── Chart data derived from this patient's scans (updates live) ──
-  const classData = DX_ORDER
-    .map(dx => ({ label: `${DX_LABELS[dx]} (${dx})`, value: myResults.filter(r => r.dx === dx).length }))
-    .filter(d => d.value > 0);
-  const classTotal = classData.reduce((s, d) => s + d.value, 0);
-
-  const locCounts = {};
-  myResults.forEach(r => {
-    const loc = r.localization || pt.localization || 'unknown';
-    locCounts[loc] = (locCounts[loc] || 0) + 1;
-  });
-  const locData = Object.entries(locCounts)
-    .map(([loc, value]) => ({ label: loc.replace(/\b\w/g, c => c.toUpperCase()).replace('Extremity', 'Ext.'), value }))
-    .sort((a, b) => b.value - a.value);
-
-  // Analyses performed per day, chronological
-  const byDate = {};
-  myResults.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + 1; });
-  const trendData = Object.keys(byDate).sort()
-    .map(date => ({ label: date.slice(5), value: byDate[date] }));
-
-  const hasData = myResults.length > 0;
-
   const downloadRecord = (r, e) => {
     e.stopPropagation();
     downloadAnalysisReport(
@@ -792,60 +790,35 @@ const PatientResults = () => {
     );
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="My Detection Results" subtitle={`${myResults.length} scan(s) on record`} />
-      <PageContent>
-        <div style={{ maxWidth: 1160, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
-          {/* Left column: charts — update dynamically as more scans are run */}
-          {hasData && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <Card>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Skin Lesion Class Distribution</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{classTotal.toLocaleString()} analysis(es) performed — grows as scans are done</div>
-                {classData.map(d => {
-                  const pct = classTotal ? d.value / classTotal : 0;
-                  return (
-                    <div key={d.label} style={{ marginBottom: 9 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                        <span style={{ color: 'var(--text)' }}>{d.label}</span>
-                        <span style={{ fontWeight: 600 }}>{d.value.toLocaleString()} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({(pct * 100).toFixed(1)}%)</span></span>
-                      </div>
-                      <div style={{ height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${pct * 100}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width 0.6s ease' }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </Card>
-              <Card>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Lesion Location Diversity</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Anatomical site of your analyses — grows as scans are done</div>
-                <HBarChart data={locData} color="var(--primary)" />
-              </Card>
-              <Card>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Skin-Lesion Analyses Performed</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>Scans over time</div>
-                {trendData.length >= 2
-                  ? <AreaTrend data={trendData} height={150} />
-                  : <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, background: 'var(--surface-2)', borderRadius: 9 }}>
-                      Run at least two scans to see your analyses trend over time.
-                    </div>}
-              </Card>
-            </div>
-          )}
+  const Dashboard = window.OlapDashboard;
+  if (!Dashboard) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <TopBar title="My Detection Results" subtitle={`${myResults.length} scan(s) on record`} />
+        <PageContent><EmptyState icon="fileText" message="Results dashboard failed to load." /></PageContent>
+      </div>
+    );
+  }
 
-          {/* Right column: past scan records */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Section divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-            <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
-            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Past Scan Analysis Records</div>
-            <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
-          </div>
-
-          {myResults.length === 0 ? <EmptyState icon="fileText" message="No results yet — run a scan to get started" /> :
-            myResults.map(r => {
+  // Records list, cross-filtered by the dashboard's active selection (matched
+  // by scan id against the filtered fact rows). Preserves per-scan reports.
+  const renderRecords = ({ filtered }) => {
+    if (myResults.length === 0) return null;
+    const ids = new Set(filtered.map(f => f.id));
+    const recs = myResults.filter(r => ids.has(r.id));
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
+          <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Past Scan Analysis Records</div>
+          <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', textAlign: 'center', marginTop: -4 }}>
+          Showing {recs.length} of {myResults.length} scans{recs.length !== myResults.length ? ' · filtered by your current selection' : ''}
+        </div>
+        {recs.length === 0
+          ? <EmptyState icon="fileText" message="No scans match the current filter — clear it above to see all records." />
+          : recs.map(r => {
               const open = expanded === r.id;
               return (
                 <Card key={r.id} onClick={() => setExpanded(open ? null : r.id)} style={{ cursor: 'pointer' }}>
@@ -863,7 +836,6 @@ const PatientResults = () => {
                       <Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} style={{ color: 'var(--text-muted)' }} />
                     </div>
                   </div>
-
                   {open && (
                     <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                       <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.7, marginBottom: 14, background: 'var(--surface-2)', padding: '10px 14px', borderRadius: 9 }}>
@@ -876,12 +848,18 @@ const PatientResults = () => {
                   )}
                 </Card>
               );
-            })
-          }
-          </div>
-        </div>
-      </PageContent>
-    </div>
+            })}
+      </div>
+    );
+  };
+
+  return (
+    <Dashboard
+      {...window.PATIENT_OLAP_CFG}
+      subtitle={`${myResults.length} scan(s) on record · slice · drill · cross-filter`}
+      offlineFacts={() => window.realFacts(ClinicStore.analysesFor(pt.id), ClinicStore.patients())}
+      renderExtra={renderRecords}
+    />
   );
 };
 

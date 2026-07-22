@@ -17,7 +17,7 @@
 const PATIENTS = [
   { id:'P001', name:'Aisha Rahman',     age:34, sex:'Female', skinType:'IV',  ita:-15, localization:'back',            lastVisit:'2026-04-15', riskLevel:'high',   diagnosis:'mel',   doctorId:'D001', phone:'+60 12-345 6789', email:'aisha.r@email.com',   address:'12 Jalan Ampang, Kuala Lumpur',     bloodType:'A+',  allergies:'Penicillin',   notes:'Patient reports recent growth in lesion size. Referred from GP. Urgent biopsy advised.' },
   { id:'P002', name:'Tom Hendricks',    age:67, sex:'Male',   skinType:'II',  ita: 42, localization:'face',            lastVisit:'2026-04-10', riskLevel:'low',    diagnosis:'nv',    doctorId:'D001', phone:'+60 11-234 5678', email:'tom.h@email.com',     address:'88 Persiaran Utama, Petaling Jaya', bloodType:'O+',  allergies:'None',         notes:'Routine monitoring of multiple benign nevi. Fair skin, high sun exposure history.' },
-  { id:'P003', name:'Maya Krishnan',    age:45, sex:'Female', skinType:'V',   ita:-28, localization:'upper extremity', lastVisit:'2026-04-08', riskLevel:'medium', diagnosis:'bcc',   doctorId:'D001', phone:'+60 16-789 0123', email:'maya.k@email.com',    address:'5 Lorong Meru, Shah Alam',          bloodType:'B+',  allergies:'Sulfonamides', notes:'BCC detected on left forearm. Surgical excision scheduled for next month.' },
+  { id:'P003', name:'Maya Krishnan',    age:45, sex:'Female', skinType:'V',   ita:-28, localization:'upper extremity', lastVisit:'2026-04-08', riskLevel:'high',   diagnosis:'bcc',   doctorId:'D001', phone:'+60 16-789 0123', email:'maya.k@email.com',    address:'5 Lorong Meru, Shah Alam',          bloodType:'B+',  allergies:'Sulfonamides', notes:'BCC detected on left forearm. Surgical excision scheduled for next month.' },
   { id:'P004', name:"James O'Brien",    age:52, sex:'Male',   skinType:'I',   ita: 58, localization:'scalp',           lastVisit:'2026-04-05', riskLevel:'medium', diagnosis:'akiec', doctorId:'D001', phone:'+60 17-456 7890', email:'james.ob@email.com',  address:'22 Taman Duta, Kuala Lumpur',       bloodType:'AB-', allergies:'Aspirin',      notes:'Actinic keratosis on scalp. Extensive sun damage history. Cryotherapy applied.' },
   { id:'P005', name:'Fatimah Idris',    age:28, sex:'Female', skinType:'VI',  ita:-45, localization:'trunk',           lastVisit:'2026-04-18', riskLevel:'high',   diagnosis:'mel',   doctorId:'D001', phone:'+60 13-567 8901', email:'fatimah.i@email.com', address:'99 Jalan Gombak, Kuala Lumpur',     bloodType:'O-',  allergies:'None',         notes:'Suspicious irregular lesion on trunk. High-risk detection result. Excisional biopsy pending.' },
   { id:'P006', name:'Lin Chen',         age:41, sex:'Male',   skinType:'III', ita: 12, localization:'lower extremity', lastVisit:'2026-03-28', riskLevel:'low',    diagnosis:'bkl',   doctorId:'D001', phone:'+60 14-678 9012', email:'lin.c@email.com',     address:'17 Subang Jaya, Selangor',          bloodType:'A-',  allergies:'Latex',        notes:'Seborrheic keratosis confirmed on lower leg. Patient reassured. Annual monitoring.' },
@@ -28,7 +28,7 @@ const PATIENTS = [
 const DETECTIONS = [
   { id:'A001', patientId:'P001', date:'2026-04-15', dx:'mel',   dxLabel:'Melanoma',             confidence:0.87, riskLevel:'high',   recommendation:'Immediate excisional biopsy recommended. Urgent referral to surgical oncology.',         scores:{mel:0.87, nv:0.05, bcc:0.04, akiec:0.02, bkl:0.01, df:0.01, vasc:0.00} },
   { id:'A002', patientId:'P002', date:'2026-04-10', dx:'nv',    dxLabel:'Melanocytic Nevi',     confidence:0.92, riskLevel:'low',    recommendation:'Benign lesion confirmed. Continue routine annual dermoscopic monitoring.',                 scores:{mel:0.02, nv:0.92, bcc:0.02, akiec:0.01, bkl:0.02, df:0.01, vasc:0.00} },
-  { id:'A003', patientId:'P003', date:'2026-04-08', dx:'bcc',   dxLabel:'Basal Cell Carcinoma', confidence:0.79, riskLevel:'medium', recommendation:'Surgical excision recommended. Refer to surgical oncology for excision margins.',         scores:{mel:0.08, nv:0.03, bcc:0.79, akiec:0.05, bkl:0.03, df:0.01, vasc:0.01} },
+  { id:'A003', patientId:'P003', date:'2026-04-08', dx:'bcc',   dxLabel:'Basal Cell Carcinoma', confidence:0.79, riskLevel:'high',   recommendation:'Surgical excision recommended. Refer to surgical oncology for excision margins.',         scores:{mel:0.08, nv:0.03, bcc:0.79, akiec:0.05, bkl:0.03, df:0.01, vasc:0.01} },
   { id:'A004', patientId:'P004', date:'2026-04-05', dx:'akiec', dxLabel:'Actinic Keratosis',    confidence:0.74, riskLevel:'medium', recommendation:'Topical 5-FU or cryotherapy recommended. Regular 6-month monitoring required.',          scores:{mel:0.10, nv:0.03, bcc:0.07, akiec:0.74, bkl:0.04, df:0.01, vasc:0.01} },
   { id:'A005', patientId:'P005', date:'2026-04-18', dx:'mel',   dxLabel:'Melanoma',             confidence:0.81, riskLevel:'high',   recommendation:'High-risk lesion detected. Urgent excisional biopsy required within 2 weeks.',           scores:{mel:0.81, nv:0.06, bcc:0.05, akiec:0.04, bkl:0.03, df:0.01, vasc:0.00} },
   { id:'A006', patientId:'P006', date:'2026-03-28', dx:'bkl',   dxLabel:'Benign Keratosis',     confidence:0.88, riskLevel:'low',    recommendation:'Benign seborrheic keratosis. No treatment necessary. Reassure patient.',                 scores:{mel:0.01, nv:0.04, bcc:0.02, akiec:0.03, bkl:0.88, df:0.01, vasc:0.01} },
@@ -111,30 +111,50 @@ function setCurrentPatient(patientId) {
   return window.PATIENT_USER;
 }
 
+/* Independent (self-registered) patient with no attending doctor. Builds a
+   synthetic PATIENT_USER from the registration form / login profile and flags
+   it so the portal hides Appointments + Messages and the empty My Doctor card. */
+function setIndependentPatient(profile) {
+  const p = {
+    id: profile.id != null ? String(profile.id) : ('IND' + Date.now()),
+    name: profile.name || 'Patient',
+    age: profile.age ?? null,
+    sex: profile.sex ? (profile.sex[0].toUpperCase() + profile.sex.slice(1)) : '',
+    phone: profile.phone || '', email: profile.email || '', address: profile.address || '',
+    skinType: profile.skinType || '', ita: profile.ita ?? null,
+    localization: profile.localization || '', bloodType: profile.bloodType || '',
+    allergies: profile.allergies || '', diagnosis: profile.diagnosis || '',
+    notes: profile.notes || '', riskLevel: 'low',
+    independent: true, assignedDoctor: null,
+  };
+  window.PATIENT_USER = p;
+  return p;
+}
+
 const ANALYTICS_DATA = {
   /* Equal Opportunity Difference per protected axis — REAL values:
-     baseline = Model A (Standard Baseline), deployed = Model E (Full Framework). */
+     baseline = Model A (Standard Baseline), deployed = Model E (MelBoost 3.0). */
   eodByAxis: [
-    { label:'Age group',       baseline:0.3404, enhanced:0.0299 },
-    { label:'Sex',             baseline:0.0840, enhanced:0.0129 },
-    { label:'Lesion location', baseline:0.6800, enhanced:0.3467 },
+    { label:'Age group',       baseline:0.2237, enhanced:0.1154 },
+    { label:'Sex',             baseline:0.1541, enhanced:0.0273 },
+    { label:'Lesion location', baseline:0.6800, enhanced:0.5938 },
   ],
   /* Melanoma true-positive rate (sensitivity) per subgroup — shows how the
      framework equalises TPR across groups (from fairness.TPR_per_group). */
   melTprByAge: [
-    { label:'Young adult', baseline:0.6923, enhanced:0.3077 },
-    { label:'Middle-aged', baseline:0.3519, enhanced:0.2778 },
-    { label:'Elderly',     baseline:0.4848, enhanced:0.2929 },
+    { label:'Young adult', baseline:0.5385, enhanced:0.6154 },
+    { label:'Middle-aged', baseline:0.3148, enhanced:0.5000 },
+    { label:'Elderly',     baseline:0.4141, enhanced:0.5354 },
   ],
   melTprBySex: [
-    { label:'Female', baseline:0.4062, enhanced:0.2812 },
-    { label:'Male',   baseline:0.4902, enhanced:0.2941 },
+    { label:'Female', baseline:0.2969, enhanced:0.5469 },
+    { label:'Male',   baseline:0.4510, enhanced:0.5196 },
   ],
   melTprByLoc: [
-    { label:'Trunk',     baseline:0.4533, enhanced:0.3467 },
-    { label:'Upper ext.',baseline:0.5938, enhanced:0.3438 },
-    { label:'Lower ext.',baseline:0.4242, enhanced:0.1818 },
-    { label:'Head',      baseline:0.3200, enhanced:0.2000 },
+    { label:'Trunk',     baseline:0.4000, enhanced:0.5200 },
+    { label:'Upper ext.',baseline:0.4062, enhanced:0.5938 },
+    { label:'Lower ext.',baseline:0.3939, enhanced:0.5455 },
+    { label:'Head',      baseline:0.3200, enhanced:0.4800 },
   ],
   /* Real HAM10000 class distribution (10,015 dermoscopic images) */
   dxDistribution: [
@@ -221,6 +241,7 @@ async function apiFetch(path, options = {}) {
 const AuthApi = {
   login:  (username, password) => apiFetch('/api/auth/login', { method:'POST', body: JSON.stringify({ username, password }) }),
   registerDoctor: (fields)     => apiFetch('/api/auth/register', { method:'POST', body: JSON.stringify(fields) }),
+  registerPatient: (fields)    => apiFetch('/api/auth/register-patient', { method:'POST', body: JSON.stringify(fields) }),
   logout: ()                   => apiFetch('/api/auth/logout', { method:'POST' }),
   me:     ()                   => apiFetch('/api/auth/me'),
 };
@@ -277,7 +298,7 @@ Object.assign(window, {
   PATIENTS, DETECTIONS, APPOINTMENTS,
   NOTIFICATIONS_DOCTOR, NOTIFICATIONS_PATIENT,
   MESSAGES, DX_LABELS, DX_ORDER,
-  DOCTOR_USER, PATIENT_USER, PATIENT_ACCOUNTS, patientUsername, setCurrentPatient, ANALYTICS_DATA,
+  DOCTOR_USER, PATIENT_USER, PATIENT_ACCOUNTS, patientUsername, setCurrentPatient, setIndependentPatient, ANALYTICS_DATA,
   // API layer (used by melanoma checker)
   AuthApi, DoctorApi, PatientApi,
   LOCALIZATIONS, apiFetch,

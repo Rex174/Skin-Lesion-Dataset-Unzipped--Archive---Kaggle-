@@ -79,6 +79,48 @@ const LoginScreen = ({ onLogin }) => {
   const [regLoading, setRegLoading] = React.useState(false);
   const setR = (k, v) => setReg(p => ({ ...p, [k]: v }));
 
+  const PREG_BLANK = {
+    name: '', age: '', sex: 'Female', phone: '', email: '', address: '',
+    bloodType: '', skinType: 'III', ita: '', localization: 'back',
+    diagnosis: '', allergies: '', notes: '', password: '',
+  };
+  const [preg, setPreg] = React.useState(PREG_BLANK);
+  const [pregError, setPregError] = React.useState('');
+  const [pregLoading, setPregLoading] = React.useState(false);
+  const setPR = (k, v) => setPreg(p => ({ ...p, [k]: v }));
+
+  const applyIndependentPatient = (profile) => {
+    if (typeof setIndependentPatient === 'function') setIndependentPatient(profile);
+    onLogin('patient');
+  };
+
+  const handlePatientRegister = async () => {
+    if (!preg.name.trim()) { setPregError('Full name is required.'); return; }
+    if (!preg.age || isNaN(parseInt(preg.age, 10))) { setPregError('A valid age is required.'); return; }
+    if (!preg.password.trim()) { setPregError('Please choose a password.'); return; }
+    setPregLoading(true); setPregError('');
+    const payload = {
+      name: preg.name.trim(), age: parseInt(preg.age, 10), sex: preg.sex,
+      phone: preg.phone.trim(), email: preg.email.trim(), address: preg.address.trim(),
+      bloodType: preg.bloodType.trim(), skinType: preg.skinType,
+      ita: preg.ita === '' ? null : parseInt(preg.ita, 10),
+      localization: preg.localization, diagnosis: preg.diagnosis,
+      allergies: preg.allergies.trim(), notes: preg.notes.trim(),
+      password: preg.password,
+    };
+    try {
+      const user = await AuthApi.registerPatient(payload);   // persists to DB + signs in
+      window.HMS_USER = user;
+      applyIndependentPatient({ ...payload, id: user.id, independent: true });
+    } catch (err) {
+      // Offline fallback — create the independent patient in-memory
+      window.HMS_USER = { role: 'patient', full_name: payload.name, independent: true, _demo: true };
+      applyIndependentPatient({ ...payload, independent: true });
+    } finally {
+      setPregLoading(false);
+    }
+  };
+
   const handleRegister = async () => {
     if (!reg.fullName.trim())  { setRegError('Full name is required.'); return; }
     if (!reg.email.trim())     { setRegError('Email address is required.'); return; }
@@ -132,8 +174,12 @@ const LoginScreen = ({ onLogin }) => {
         });
       }
       if (user.role === 'patient') {
-        const pid = user.patientId || user.patient_id || resolvePatientId(user.username);
-        if (pid) setCurrentPatient(pid);
+        if (user.independent) {
+          if (typeof setIndependentPatient === 'function') setIndependentPatient(user);
+        } else {
+          const pid = user.patientId || user.patient_id || resolvePatientId(user.username);
+          if (pid) setCurrentPatient(pid);
+        }
       }
       onLogin(user.role);
     } catch (err) {
@@ -209,10 +255,10 @@ const LoginScreen = ({ onLogin }) => {
       </div>
 
       {/* Right login panel */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: (selectedRole === 'patient' && mode === 'register') ? 'flex-start' : 'center', justifyContent: 'center', padding: '48px 40px', overflowY: 'auto', maxHeight: '100vh' }}>
         <div style={{ width: '100%', maxWidth: 420 }}>
           <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', marginBottom: 6 }}>Welcome back</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', marginBottom: 6 }}>{mode === 'register' ? 'Welcome' : 'Welcome back'}</div>
             <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>Sign in to your MelanoScan account</div>
           </div>
 
@@ -243,7 +289,7 @@ const LoginScreen = ({ onLogin }) => {
             </>
           ) : (
             <>
-              <button onClick={() => { setSelectedRole(null); setForm({ username: '', password: '' }); setError(''); setMode('signin'); setReg(REG_BLANK); setRegError(''); }}
+              <button onClick={() => { setSelectedRole(null); setForm({ username: '', password: '' }); setError(''); setMode('signin'); setReg(REG_BLANK); setRegError(''); setPreg(PREG_BLANK); setPregError(''); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
                   color: 'var(--text-muted)', background: 'none', border: 'none',
                   cursor: 'pointer', marginBottom: 24, fontFamily: 'inherit' }}>
@@ -297,6 +343,62 @@ const LoginScreen = ({ onLogin }) => {
                     Back to Sign In
                   </button>
                 </>
+              ) : (selectedRole === 'patient' && mode === 'register') ? (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+                    Register as an independent patient (no attending doctor). You'll get scan analysis, results and profile — appointments and messaging require a clinic doctor.
+                  </div>
+                  {[
+                    { label: 'Full Name', key: 'name', placeholder: 'e.g. Nadia Hassan' },
+                    { label: 'Age', key: 'age', type: 'number', placeholder: 'e.g. 42' },
+                    { label: 'Sex', key: 'sex', options: ['Female', 'Male', 'Other'] },
+                    { label: 'Phone', key: 'phone', placeholder: '+60 12-345 6789' },
+                    { label: 'Email Address', key: 'email', type: 'email', placeholder: 'name@email.com' },
+                    { label: 'Address', key: 'address' },
+                    { label: 'Blood Type', key: 'bloodType', options: ['', 'A+','A-','B+','B-','AB+','AB-','O+','O-'] },
+                    { label: 'Skin Type (Fitzpatrick)', key: 'skinType', options: ['I','II','III','IV','V','VI'] },
+                    { label: 'ITA (°)', key: 'ita', type: 'number', placeholder: 'e.g. 25' },
+                    { label: 'Primary Lesion Site', key: 'localization', options: (typeof LOCALIZATIONS !== 'undefined' ? LOCALIZATIONS : ['back']) },
+                    { label: 'Known Condition', key: 'diagnosis', options: [''].concat(typeof DX_ORDER !== 'undefined' ? DX_ORDER : []) },
+                    { label: 'Allergies', key: 'allergies', placeholder: 'e.g. NSAIDs' },
+                    { label: 'Password', key: 'password', type: 'password', placeholder: '••••••••' },
+                  ].map(f => (
+                    <div key={f.key} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 7 }}>{f.label}</div>
+                      {f.options ? (
+                        <select value={preg[f.key]} onChange={e => setPR(f.key, e.target.value)}
+                          style={{ width: '100%', padding: '11px 16px', borderRadius: 10, border: '1.5px solid var(--border)',
+                            fontSize: 14, fontFamily: 'inherit', outline: 'none', color: 'var(--text)', background: 'var(--surface)', boxSizing: 'border-box' }}>
+                          {f.options.map(o => <option key={o} value={o}>{o === '' ? '—' : (typeof DX_LABELS !== 'undefined' && DX_LABELS[o]) || (o[0].toUpperCase() + o.slice(1))}</option>)}
+                        </select>
+                      ) : (
+                        <input type={f.type || 'text'} value={preg[f.key]} placeholder={f.placeholder}
+                          onChange={e => setPR(f.key, e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handlePatientRegister()}
+                          style={{ width: '100%', padding: '11px 16px', borderRadius: 10, border: '1.5px solid var(--border)',
+                            fontSize: 14, fontFamily: 'inherit', outline: 'none', color: 'var(--text)', boxSizing: 'border-box' }}
+                        />
+                      )}
+                    </div>
+                  ))}
+
+                  {pregError && <div style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 14 }}>{pregError}</div>}
+
+                  <button onClick={handlePatientRegister} disabled={pregLoading}
+                    style={{ width: '100%', padding: '13px', borderRadius: 11,
+                      background: pregLoading ? 'var(--text-muted)' : 'var(--primary)',
+                      color: '#fff', fontSize: 15, fontWeight: 700, border: 'none',
+                      cursor: pregLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', marginBottom: 12 }}>
+                    {pregLoading ? 'Creating account…' : 'Create Account'}
+                  </button>
+
+                  <button onClick={() => { setMode('signin'); setPregError(''); }}
+                    style={{ width: '100%', padding: '11px', borderRadius: 11, background: 'transparent',
+                      color: 'var(--text-muted)', fontSize: 14, fontWeight: 600, border: '1.5px solid var(--border)',
+                      cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Back to Sign In
+                  </button>
+                </>
               ) : (
                 <>
               {[
@@ -326,7 +428,7 @@ const LoginScreen = ({ onLogin }) => {
                 {loading ? 'Signing in…' : 'Sign In'}
               </button>
 
-              {selectedRole === 'doctor' && (
+              {(selectedRole === 'doctor' || selectedRole === 'patient') && (
                 <button onClick={() => { setMode('register'); setError(''); }}
                   style={{ width: '100%', padding: '12px', borderRadius: 11, background: 'transparent',
                     color: 'var(--primary)', fontSize: 14, fontWeight: 700, border: '1.5px solid var(--primary)',
@@ -422,11 +524,15 @@ const App = () => {
 
   const renderPatient = () => {
     const setP = p => setPage(p);
+    const independent = (window.PATIENT_USER || {}).independent;
+    if (independent && (page === 'appointments' || page === 'messages')) {
+      return <PatientDashboard setPage={setP} />;
+    }
     switch (page) {
       case 'dashboard':     return <PatientDashboard setPage={setP} />;
       case 'profile':       return <PatientProfile />;
       case 'detection':     return <PatientDetection setPage={setP} />;
-      case 'appointments':  return <PatientAppointments />;
+      case 'appointments':  return <PatientAppointments setPage={setP} />;
       case 'results':       return <PatientResults />;
       case 'messages':      return <PatientMessages />;
       case 'notifications': return <PatientNotifications />;

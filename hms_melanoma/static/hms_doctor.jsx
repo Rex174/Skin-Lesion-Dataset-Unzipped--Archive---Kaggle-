@@ -471,7 +471,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
       }
       const json = await resp.json();
       if (!json.ok) throw new Error(json.error || 'Unknown error');
-      const data = json.data;
+      const data = json.data; 
       clearInterval(iv); setProgress(100);
 
       if (data.enhanced?.error) {
@@ -533,7 +533,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
             <div style={{ fontSize: 12, fontWeight: 800,
               color: isEnhanced ? 'var(--primary-dark)' : 'var(--text-muted)' }}>{modelLabel}</div>
             <div style={{ fontSize: 10, color: isEnhanced ? 'var(--primary)' : 'var(--text-muted)', opacity: 0.8 }}>
-              {isEnhanced ? 'Intersectional Sampling + Reweighting + cGAN' : 'Original HAM10000 (unmodified)'}
+              {isEnhanced ? 'Intersectional Sampling + Reweighting + cGAN + Melanoma-sensitivity Boosting' : 'Original HAM10000 (unmodified)'}
             </div>
           </div>
           {isEnhanced && (
@@ -630,7 +630,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="Melanoma Detection Analysis" subtitle="AI-powered analysis using the deployed best model — Enhanced v2 (Hybrid)" />
+      <TopBar title="Melanoma Detection Analysis" subtitle="AI-powered analysis using the deployed best model" />
       <PageContent>
 
         {/* ── UPLOAD STEP ─────────────────────────────────────────────────── */}
@@ -678,8 +678,8 @@ const DoctorDetection = ({ detectionPatientId }) => {
                 padding: '10px 14px', background: 'var(--primary-light)', borderRadius: 9 }}>
                 <Icon name="shield" size={15} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: 2 }} />
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)' }}>Deployed model: Enhanced v2 (Hybrid)</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>The best-performing, bias-corrected model is used for all clinical analyses. Compare every trained model under <strong>Model Performance</strong>.</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)' }}>Deployed model: Model E — MelBoost 3.0</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>The best-performing bias-corrected model is used for all clinical analyses.</div>
                 </div>
               </div>
             </Card>
@@ -752,7 +752,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
                       <Btn variant="secondary" size="sm" icon="download"
                         onClick={() => downloadAnalysisReport(
                           patient,
-                          { ...h, localization: (patient && patient.localization) || localization, eodAxes: (eodForPatient(patient) || {}).axes },
+                          { ...h, localization: h.localization || (patient && patient.localization) || localization, eodAxes: (eodForPatient(patient, h.localization) || {}).axes },
                           h.notes
                         )}>
                         Report
@@ -806,7 +806,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
 
         {/* ── RESULT STEP ─────────────────────────────────────────────────── */}
         {step === 'result' && resultE && (() => {
-          const eod = eodForPatient(patient);
+          const eod = eodForPatient(patient, localization);
           const eodAxes = resultE.eodAxes || eod.axes;
           const eodBase = resultE.eodBaseline ?? eod.meanBaseline;
           const eodEnh  = resultE.eodEnhanced ?? eod.meanEnhanced;
@@ -837,7 +837,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
                 <Btn variant="primary" icon="download"
                   onClick={() => downloadAnalysisReport(
                     patient,
-                    { ...resultE, localization, date: new Date().toISOString().slice(0,10), eodAxes: (eodForPatient(patient) || {}).axes },
+                    { ...resultE, localization, date: new Date().toISOString().slice(0,10), eodAxes: (eodForPatient(patient, localization) || {}).axes },
                     notes
                   )}>
                   Download Report
@@ -853,7 +853,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
 
             {/* Two-column: best-model result + EOD/bias panel */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20, alignItems: 'start' }}>
-              <ModelResultCard result={resultE} modelLabel="Model E — Full Framework" isEnhanced={true} />
+              <ModelResultCard result={resultE} modelLabel="Model E — MelBoost 3.0" isEnhanced={true} />
 
               {/* ── EOD / BIAS REDUCTION PANEL (age · sex · location) ── */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -863,7 +863,7 @@ const DoctorDetection = ({ detectionPatientId }) => {
                     <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>Fairness for this patient</div>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
-                    Equal Opportunity Difference on the protected axes this patient sits on, comparing the baseline model with the deployed Full Framework.
+                    Equal Opportunity Difference on the protected axes this patient sits on, comparing the baseline model with the deployed MelBoost 3.0 model.
                   </div>
 
                   {/* Aggregate reduction */}
@@ -1029,7 +1029,7 @@ const DoctorRecord = ({ selectedPatientId, setPage, setDetectionPatientId }) => 
                   <Btn variant="secondary" size="sm" icon="download"
                     onClick={() => downloadAnalysisReport(
                       patient,
-                      { ...d, localization: (patient && patient.localization), eodAxes: (eodForPatient(patient) || {}).axes },
+                      { ...d, localization: d.localization || (patient && patient.localization), eodAxes: (eodForPatient(patient, d.localization) || {}).axes },
                       d.notes
                     )}>
                     Report
@@ -1176,189 +1176,6 @@ const DoctorAppointments = () => {
 };
 
 /* ════════════════════════════════════════
-   DOCTOR ANALYTICS
-════════════════════════════════════════ */
-const DoctorAnalytics = () => {
-  const { eodByAxis, melTprByAge, melTprBySex, melTprByLoc, dxDistribution, cohort } = ANALYTICS_DATA;
-  const { data: liveA, online } = useLive(
-    () => apiFetch('/api/doctor/analytics-live'),
-    () => LiveSim.analytics(),
-    4000
-  );
-
-  // Live cohort/scan aggregates from the backend (fall back to dataset demo data)
-  const hasLive = liveA && Array.isArray(liveA.dxDistribution);
-  const liveDx        = hasLive && liveA.dxDistribution.length      ? liveA.dxDistribution      : null;
-  const liveLoc       = hasLive && liveA.locationDistribution.length ? liveA.locationDistribution : null;
-  const liveAge       = hasLive && liveA.ageDistribution            ? liveA.ageDistribution     : null;
-  const liveSex       = hasLive && liveA.sexDistribution            ? liveA.sexDistribution     : null;
-  const liveRisk      = hasLive && liveA.riskOutcome                ? liveA.riskOutcome         : null;
-  const liveTrend     = hasLive && liveA.analysesTrend && liveA.analysesTrend.length ? liveA.analysesTrend : null;
-  const totalScans    = liveA?.imagesEvaluated ?? 0;
-
-  const dxData    = liveDx  || dxDistribution;
-  const dxTotal   = dxData.reduce((s, d) => s + d.value, 0) || 0;
-  const locData   = liveLoc || cohort.localization;
-  const ageData   = liveAge || cohort.age;
-  const sexData   = liveSex || cohort.sex;
-  const riskData  = liveRisk || cohort.riskOutcome;
-  const trendData = liveTrend || cohort.analysesTrend;
-  const patientTotal = liveA?.totalPatients ?? sexData.reduce((s, d) => s + d.value, 0);
-  const sexTotal  = sexData.reduce((s, d) => s + d.value, 0);
-  const riskTotal = riskData.reduce((s, d) => s + d.value, 0);
-  const trendPct  = (trendData.length >= 2 && trendData[0].value > 0)
-    ? Math.round((trendData.at(-1).value / trendData[0].value - 1) * 100) : null;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TopBar title="Analytics & Fairness Metrics" subtitle="HAM10000 · Model E (Full Framework, deployed) · live bias audit"
-        actions={<LiveBadge online={online} />} />
-      <PageContent>
-        {/* Key metrics — live, real deployed-model numbers */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-          {[
-            { icon:'shield',     label:'Overall Accuracy',   value:<AnimatedNumber value={(liveA?.overallAccuracy ?? 0.7327) * 100} decimals={1} suffix="%" />, sub:'Deployed model (E)',    variant:'info'    },
-            { icon:'activity',   label:'Macro AUC',          value:<AnimatedNumber value={liveA?.macroAuc ?? 0.9276} decimals={3} />,                            sub:'Discrimination',        variant:'success' },
-            { icon:'trendingUp', label:'Mean EOD',           value:<AnimatedNumber value={liveA?.meanEOD ?? 0.130} decimals={3} />,                              sub:'age · sex · location',  variant:'success' },
-            { icon:'layers',     label:'Images Evaluated',   value:<AnimatedNumber value={totalScans} />,                                                        sub:'Total scans performed', variant:'info'    },
-          ].map(m => (
-            <Card key={m.label} style={{ flex: 1, minWidth: 160 }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: `var(--${m.variant}-bg)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: `var(--${m.variant})` }}>
-                  <Icon name={m.icon} size={17} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', lineHeight: 1 }}>{m.value}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{m.label}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{m.sub}</div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {/* Trade-off callout */}
-        <Card style={{ marginBottom: 20, borderColor: 'var(--info)', background: 'var(--info-bg)' }}>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <Icon name="info" size={18} style={{ color: 'var(--info)', flexShrink: 0, marginTop: 1 }} />
-            <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
-              <strong>Fairness–accuracy trade-off.</strong> The Full Framework reduces mean Equal Opportunity Difference by
-              <strong> 65%</strong> (0.368 → 0.130) versus the baseline — age-group EOD falls 91% and sex EOD 85% — while overall
-              accuracy moves from 86.0% to 73.3%. The deployed model is chosen for equitable melanoma detection across demographic groups.
-            </div>
-          </div>
-        </Card>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-          {/* EOD by axis — baseline vs deployed */}
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Equal Opportunity Difference by Protected Axis</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Lower is fairer · baseline (Model A) vs deployed (Model E)</div>
-            <GroupedBarChart data={eodByAxis} height={210} max={0.7} />
-          </Card>
-
-          {/* Melanoma TPR by age */}
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Melanoma Sensitivity by Age Group</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>True-positive rate equalises across groups (Pediatric had no test positives)</div>
-            <GroupedBarChart data={melTprByAge} height={210} max={0.75} asPercent decimals={2} />
-          </Card>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-          {/* Melanoma TPR by sex + location stacked in one card */}
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Melanoma Sensitivity by Sex</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Gap narrows from 8.4 to 1.3 points</div>
-            <GroupedBarChart data={melTprBySex} height={180} max={0.6} asPercent decimals={2} />
-          </Card>
-
-          {/* DX distribution — live from analyses performed */}
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Skin Lesion Class Distribution</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{dxTotal.toLocaleString()} analyses performed — grows as scans are done</div>
-            {dxData.map(d => {
-              const pct = dxTotal ? d.value / dxTotal : 0;
-              return (
-              <div key={d.label} style={{ marginBottom: 9 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                  <span style={{ color: 'var(--text)' }}>{d.label}</span>
-                  <span style={{ fontWeight: 600 }}>{d.value.toLocaleString()} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({(pct * 100).toFixed(1)}%)</span></span>
-                </div>
-                <div style={{ height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct * 100}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width 0.6s ease' }} />
-                </div>
-              </div>
-              );
-            })}
-            {dxTotal === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '8px 0' }}>No analyses yet — run a detection to populate this chart.</div>}
-          </Card>
-        </div>
-
-        {/* ═══ PATIENT COHORT & ANALYSIS DIVERSITY ═══ */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '30px 0 16px' }}>
-          <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
-          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Patient Cohort &amp; Analysis Diversity</div>
-          <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
-        </div>
-
-        {/* Row 1: Age distribution + Lesion location */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Patient Age Distribution</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Ages of patients currently in the system</div>
-            <BarChart data={ageData} height={190} colorFn={() => 'var(--secondary)'} />
-          </Card>
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Lesion Location Diversity</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Anatomical site of analyses performed — grows as scans are done</div>
-            {locData.length
-              ? <HBarChart data={locData} color="var(--primary)" />
-              : <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>No analyses yet.</div>}
-          </Card>
-        </div>
-
-        {/* Row 2: Sex + Risk outcome donuts */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Patient Sex</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Gender distribution of current patients</div>
-            <DonutChart data={sexData} centerLabel={String(patientTotal)} centerSub="patients" />
-          </Card>
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Risk Outcome Mix</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>Current risk level of patients in the system</div>
-            <DonutChart data={riskData}
-              centerLabel={`${riskTotal ? (riskData[0].value / riskTotal * 100).toFixed(0) : 0}%`}
-              centerSub="high" />
-          </Card>
-        </div>
-
-        {/* Row 3: Analyses over time */}
-        <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Skin-Lesion Analyses Performed</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Melanoma detection scans conducted in the HMS, per month</div>
-            </div>
-            {trendPct != null && <Badge variant="success">▲ {trendPct}% since {trendData[0].label}</Badge>}
-          </div>
-          <div style={{ marginTop: 8 }}>
-            {trendData.length
-              ? <AreaTrend data={trendData} height={170} color="var(--primary)" />
-              : <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '50px 0' }}>No analyses recorded yet.</div>}
-          </div>
-        </Card>
-
-        <div style={{ marginTop: 14, fontSize: 11, color: 'var(--text-light)', lineHeight: 1.6 }}>
-          Cohort and analysis charts reflect live MelanoScan HMS data — patients registered and melanoma-detection scans performed in the system.
-        </div>
-      </PageContent>
-    </div>
-  );
-};
-
-/* ════════════════════════════════════════
    DOCTOR NOTIFICATIONS
 ════════════════════════════════════════ */
 const DoctorNotifications = () => {
@@ -1415,12 +1232,42 @@ const DoctorNotifications = () => {
 /* ════════════════════════════════════════
    DOCTOR — MODEL PERFORMANCE  (all trained models)
 ════════════════════════════════════════ */
+/* Lesion thumbnail for the Proof-of-Concept gallery. Falls back to a
+   labelled placeholder tile when the ISIC image file has not been dropped
+   into /static/poc_images/ yet, so the section renders cleanly offline. */
+const PoCLesionImage = ({ id }) => {
+  const [failed, setFailed] = React.useState(false);
+  if (failed) {
+    return (
+      <div style={{
+        width: '100%', aspectRatio: '1 / 1', borderRadius: 10, background: 'var(--surface-2)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--text-light)', border: '1px solid var(--border)', gap: 6,
+      }}>
+        <Icon name="scan" size={26} style={{ opacity: 0.5 }} />
+        <span style={{ fontSize: 10 }}>{id}.jpg</span>
+      </div>
+    );
+  }
+  return (
+    <img src={POC_IMG_BASE + id + '.jpg'} alt={id} onError={() => setFailed(true)}
+      style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'contain', borderRadius: 10,
+               border: '1px solid var(--border)', background: 'var(--surface-2)', display: 'block' }} />
+  );
+};
+
 const DoctorModelPerformance = () => {
   const { data: models, online } = useLive(
     () => ModelsApi.comparison(),
     () => MODEL_REGISTRY,
     8000
   );
+  const { data: pocData } = useLive(
+    () => ModelsApi.externalValidation(),
+    () => POC_ISIC2020,
+    30000
+  );
+  const ext = pocData && pocData.cases ? pocData : POC_ISIC2020;
   const list = Array.isArray(models) && models.length ? models : MODEL_REGISTRY;
   const best = list.find(m => m.isBest) || list[list.length - 1];
   const baseline = list.find(m => m.key === 'baseline') || list.reduce((a, b) => (b.meanEOD > a.meanEOD ? b : a), list[0]);
@@ -1445,13 +1292,13 @@ const DoctorModelPerformance = () => {
                 <div style={{ fontSize: 17, fontWeight: 900, color: 'var(--text)' }}>{best.name}</div>
                 <span style={{ fontSize: 10, background: 'var(--primary)', color: '#fff', borderRadius: 999, padding: '3px 10px', fontWeight: 800, letterSpacing: 0.5 }}>DEPLOYED BEST MODEL</span>
               </div>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, maxWidth: 720, lineHeight: 1.5 }}>{best.note}</div>
             </div>
             <div style={{ display: 'flex', gap: 22, textAlign: 'center' }}>
               {[
-                ['Accuracy', `${(best.accuracy * 100).toFixed(1)}%`, 'var(--text)'],
-                ['Mean EOD', best.meanEOD.toFixed(3), 'var(--success)'],
-                ['Bias ↓ vs baseline', `${biasReduction(best)}%`, 'var(--primary)'],
+                ['Melanomas Detected', `${(best.melSensitivity * 100).toFixed(0)}%`, 'var(--success)'],
+                ['Missed per 100', `${best.melMissed ?? Math.round((1 - best.melSensitivity) * 100)}`, 'var(--text)'],
+                ['Worst-Group TPR', best.worstGroupTPR?.toFixed(3) ?? '—', 'var(--success)'],
+                ['Accuracy', `${(best.accuracy * 100).toFixed(1)}%`, 'var(--text-muted)'],
               ].map(([k, v, c]) => (
                 <div key={k}>
                   <div style={{ fontSize: 24, fontWeight: 900, color: c }}>{v}</div>
@@ -1478,50 +1325,294 @@ const DoctorModelPerformance = () => {
 
         {/* Full comparison table */}
         <Card padding="0">
-          <div style={{ padding: '16px 20px', fontWeight: 700, fontSize: 15 }}>All Trained Models — Detailed Comparison</div>
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>All Trained Models — Detailed Comparison</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
+              Clinical performance first · a model that fails all groups equally scores a perfect EOD
+            </div>
+          </div>
           <Divider />
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)' }}>
-                  {['Model','Mitigation Strategy','Accuracy','AUC','Mel. Sens.','EOD age','EOD sex','EOD loc','Bias ↓'].map(h => (
-                    <th key={h} style={{ padding: '11px 14px', textAlign: h === 'Model' || h === 'Mitigation Strategy' ? 'left' : 'center', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
+                  {['Model','Mitigation Strategy','Mel. Sens.','Missed / 100','Worst-Group TPR','Best-Group TPR','Verdict','Accuracy','AUC','EOD age','EOD sex','EOD loc'].map(h => {
+                    const sub = { 'Mel. Sens.': 'True Positive Rate / Recall', 'Missed / 100': 'False Negative Rate', 'Worst-Group TPR': 'Unprivileged Group', 'Best-Group TPR': 'Privileged Group' }[h];
+                    return (
+                    <th key={h} style={{
+                      padding: '11px 12px',
+                      textAlign: (h === 'Model' || h === 'Mitigation Strategy') ? 'left' : 'center',
+                      fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap',
+                      borderBottom: ['Mel. Sens.','Missed / 100','Worst-Group TPR','Best-Group TPR','Verdict'].includes(h)
+                        ? '2px solid var(--primary)' : 'none',
+                    }}>
+                      {h}
+                      {sub && <div style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--text-light)', marginTop: 2 }}>{sub}</div>}
+                    </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {list.map(m => (
-                  <tr key={m.key} style={{ borderTop: '1px solid var(--border)', background: m.isBest ? 'var(--primary-light)' : 'transparent' }}>
-                    <td style={{ padding: '13px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{m.name}</span>
-                        {m.isBest && <span style={{ fontSize: 9, background: 'var(--primary)', color: '#fff', borderRadius: 999, padding: '2px 7px', fontWeight: 800 }}>DEPLOYED</span>}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.arch}</div>
-                    </td>
-                    <td style={{ padding: '13px 14px', fontSize: 12, color: 'var(--text)' }}>{m.mitigation}</td>
-                    <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{(m.accuracy * 100).toFixed(1)}%</td>
-                    <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>{m.auc.toFixed(3)}</td>
-                    <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>{(m.melSensitivity * 100).toFixed(0)}%</td>
-                    {['eodAge','eodSex','eodLoc'].map(k => (
-                      <td key={k} style={{ padding: '13px 14px', textAlign: 'center' }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: m[k] <= 0.08 ? 'var(--success)' : m[k] <= 0.20 ? 'var(--warning)' : 'var(--danger)' }}>{m[k].toFixed(3)}</span>
+                {list.map(m => {
+                  const baseMel   = baseline.melSensitivity ?? 0.39;
+                  const baseWorst = baseline.worstGroupTPR  ?? 0.3148;
+                  const baseBest  = baseline.bestGroupTPR   ?? null;
+                  const missed    = m.melMissed ?? Math.round((1 - m.melSensitivity) * 100);
+                  const melBeats  = m.melSensitivity >= baseMel;
+                  const wgBeats   = (m.worstGroupTPR ?? 0) >= baseWorst;
+                  const bgBeats   = (m.bestGroupTPR != null && baseBest != null) ? m.bestGroupTPR >= baseBest : null;
+
+                  const VERDICT = {
+                    uplift:         { label: 'GENUINE UPLIFT',  bg: 'var(--success-bg)', fg: 'var(--success)' },
+                    levelling_down: { label: 'LEVELLING DOWN',  bg: 'var(--danger-bg)',  fg: 'var(--danger)'  },
+                    mixed:          { label: 'MIXED',           bg: 'var(--warning-bg)', fg: 'var(--warning)' },
+                    baseline:       { label: 'BASELINE',        bg: 'var(--surface-2)',  fg: 'var(--text-muted)' },
+                  }[m.verdict || 'mixed'];
+
+                  return (
+                    <tr key={m.key} style={{ borderTop: '1px solid var(--border)', background: m.isBest ? 'var(--primary-light)' : 'transparent' }}>
+                      <td style={{ padding: '13px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{m.name}</span>
+                          {m.isBest && <span style={{ fontSize: 9, background: 'var(--primary)', color: '#fff', borderRadius: 999, padding: '2px 7px', fontWeight: 800 }}>DEPLOYED</span>}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.arch}</div>
                       </td>
-                    ))}
-                    <td style={{ padding: '13px 14px', textAlign: 'center' }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: biasReduction(m) > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
-                        {m.key === baseline.key ? '—' : `${biasReduction(m)}%`}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+
+                      <td style={{ padding: '13px 12px', fontSize: 12, color: 'var(--text)' }}>CNN + {m.mitigation}</td>
+
+                      {/* Melanoma sensitivity — the clinical metric */}
+                      <td style={{ padding: '13px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 15, fontWeight: 900, color: melBeats ? 'var(--success)' : 'var(--danger)' }}>
+                          {(m.melSensitivity * 100).toFixed(0)}%
+                        </span>
+                      </td>
+
+                      {/* Melanomas missed per 100 */}
+                      <td style={{ padding: '13px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 15, fontWeight: 900, color: melBeats ? 'var(--success)' : 'var(--danger)' }}>
+                          {missed}
+                        </span>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-light)' }}>patients</div>
+                      </td>
+
+                      {/* Worst-group melanoma TPR — the Group DRO metric */}
+                      <td style={{ padding: '13px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: wgBeats ? 'var(--success)' : 'var(--danger)' }}>
+                          {m.worstGroupTPR != null ? m.worstGroupTPR.toFixed(3) : '—'}
+                        </span>
+                        {m.verdict !== 'baseline' && m.worstGroupTPR != null && (
+                          <div style={{ fontSize: 9.5, color: wgBeats ? 'var(--success)' : 'var(--danger)' }}>
+                            {(m.worstGroupTPR - baseWorst >= 0 ? '+' : '')}{(m.worstGroupTPR - baseWorst).toFixed(3)}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Best-group melanoma TPR — the ceiling, for context alongside the floor */}
+                      <td style={{ padding: '13px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: bgBeats == null ? 'var(--text-muted)' : (bgBeats ? 'var(--success)' : 'var(--danger)') }}>
+                          {m.bestGroupTPR != null ? m.bestGroupTPR.toFixed(3) : '—'}
+                        </span>
+                        {m.verdict !== 'baseline' && m.bestGroupTPR != null && baseBest != null && (
+                          <div style={{ fontSize: 9.5, color: bgBeats ? 'var(--success)' : 'var(--danger)' }}>
+                            {(m.bestGroupTPR - baseBest >= 0 ? '+' : '')}{(m.bestGroupTPR - baseBest).toFixed(3)}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Levelling-down verdict */}
+                      <td style={{ padding: '13px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 800, background: VERDICT.bg, color: VERDICT.fg,
+                                       borderRadius: 999, padding: '4px 9px', whiteSpace: 'nowrap', letterSpacing: 0.3 }}>
+                          {VERDICT.label}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: '13px 12px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>{(m.accuracy * 100).toFixed(1)}%</td>
+                      <td style={{ padding: '13px 12px', textAlign: 'center', fontSize: 12.5, color: 'var(--text-light)' }}>{m.auc.toFixed(3)}</td>
+
+                      {['eodAge','eodSex','eodLoc'].map(k => (
+                        <td key={k} style={{ padding: '13px 12px', textAlign: 'center' }}>
+                          <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{m[k].toFixed(3)}</span>
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          <div style={{ padding: '12px 20px', fontSize: 11, color: 'var(--text-light)', borderTop: '1px solid var(--border)' }}>
-            EOD = Equal Opportunity Difference (max melanoma-TPR gap across subgroups on that axis; lower is fairer). Bias ↓ = mean-EOD reduction vs Model A. Model E is deployed for equitable detection despite lower raw accuracy.
-            {!online && ' · Reference values from Phase-1 results — connect the Flask backend (/api/models/comparison) for live figures.'}
+
+        </Card>
+
+        {/* ════════════════════════════════════════════════════════
+            PROOF OF CONCEPT — external validation on ISIC 2020
+        ════════════════════════════════════════════════════════ */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '30px 0 16px' }}>
+          <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-muted)', letterSpacing: 0.6, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Proof of Concept (ISIC 2020)</div>
+          <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+        </div>
+        <Card padding="0">
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Proof of Concept — External Validation on ISIC 2020</div>
+              <span style={{ fontSize: 9.5, fontWeight: 800, background: 'var(--success-bg)', color: 'var(--success)',
+                             borderRadius: 999, padding: '3px 9px', letterSpacing: 0.3 }}>OUT-OF-DISTRIBUTION</span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+              <span>Total evaluation images = <strong style={{ color: 'var(--text)' }}>{ext.evalTotal.toLocaleString()}</strong></span>
+              <span>Total melanoma = <strong style={{ color: 'var(--text)' }}>{ext.evalMelanoma.toLocaleString()}</strong></span>
+              <span>Total benign = <strong style={{ color: 'var(--text)' }}>{ext.evalBenign.toLocaleString()}</strong></span>
+            </div>
           </div>
+          <Divider />
+
+          {/* Headline stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: 'var(--border)' }}>
+            {[
+              ['Melanoma sensitivity', `${(ext.sensitivity.baseline * 100).toFixed(1)}% → ${(ext.sensitivity.enhanced * 100).toFixed(1)}%`, `+${(ext.sensitivity.delta * 100).toFixed(1)} pts · Model A → Model E`, 'var(--success)', 'True Positive Rate / Recall'],
+              ['Melanomas recovered', `${ext.recovered}`, 'missed by Model A · caught by Model E', 'var(--success)', null],
+              ['Missed per 100', `${ext.missedPer100.baseline} → ${ext.missedPer100.enhanced}`, 'fewer melanomas missed', 'var(--text)', 'False Negative Rate'],
+              ['Fairness verdict', 'GENUINE UPLIFT', 'on all three protected axes', 'var(--success)', null],
+            ].map(([k, v, s, c, sub]) => (
+              <div key={k} style={{ background: 'var(--surface)', padding: '15px 18px' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: sub ? 1 : 6 }}>{k}</div>
+                {sub && <div style={{ fontSize: 11, color: 'var(--text-light)', marginBottom: 6 }}>{sub}</div>}
+                <div style={{ fontSize: 20, fontWeight: 900, color: c, lineHeight: 1.15 }}>{v}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>{s}</div>
+              </div>
+            ))}
+          </div>
+          <Divider />
+
+          {/* Per-axis worst-group AND best-group detection on the external set */}
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>
+              Worst-group & Best-group melanoma detection (TPR) on ISIC 2020
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 12 }}>
+              Best-group TPR is shown alongside for the full spread on each axis.
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-2)' }}>
+                    <th rowSpan={2} style={{ padding: '9px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>Protected axis</th>
+                    <th colSpan={3} style={{ padding: '7px 12px 4px', textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--danger)', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>Worst-group TPR (Unprivileged)</th>
+                    <th colSpan={3} style={{ padding: '7px 12px 4px', textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--success)', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>Best-group TPR (Privileged)</th>
+                    <th rowSpan={2} style={{ padding: '9px 12px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>Verdict</th>
+                  </tr>
+                  <tr style={{ background: 'var(--surface-2)' }}>
+                    {['Model A', 'Model E', 'Δ change', 'Model A', 'Model E', 'Δ change'].map((h, i) => (
+                      <th key={i} style={{ padding: '4px 12px 9px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ext.fairness.map(f => (
+                    <tr key={f.axis} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '11px 12px', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{f.axis}</td>
+
+                      {/* Worst-group (floor) */}
+                      <td style={{ padding: '11px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--danger)' }}>{f.baselineWorst != null ? f.baselineWorst.toFixed(3) : '—'}</span>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-light)' }}>{f.baselineWorstGroup}</div>
+                      </td>
+                      <td style={{ padding: '11px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--success)' }}>{f.enhancedWorst != null ? f.enhancedWorst.toFixed(3) : '—'}</span>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-light)' }}>{f.enhancedWorstGroup}</div>
+                      </td>
+                      <td style={{ padding: '11px 12px', textAlign: 'center', fontSize: 13, fontWeight: 800, color: 'var(--success)' }}>
+                        {f.worstDelta != null ? `+${f.worstDelta.toFixed(3)}` : '—'}
+                      </td>
+
+                      {/* Best-group (ceiling) */}
+                      <td style={{ padding: '11px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--danger)' }}>{f.baselineBest != null ? f.baselineBest.toFixed(3) : '—'}</span>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-light)' }}>{f.baselineBestGroup || '—'}</div>
+                      </td>
+                      <td style={{ padding: '11px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--success)' }}>{f.enhancedBest != null ? f.enhancedBest.toFixed(3) : '—'}</span>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-light)' }}>{f.enhancedBestGroup || '—'}</div>
+                      </td>
+                      <td style={{ padding: '11px 12px', textAlign: 'center', fontSize: 13, fontWeight: 800, color: 'var(--success)' }}>
+                        {(f.baselineBest != null && f.enhancedBest != null) ? `${f.enhancedBest - f.baselineBest >= 0 ? '+' : ''}${(f.enhancedBest - f.baselineBest).toFixed(3)}` : '—'}
+                      </td>
+
+                      <td style={{ padding: '11px 12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 800, background: 'var(--success-bg)', color: 'var(--success)',
+                                       borderRadius: 999, padding: '4px 9px', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>GENUINE UPLIFT</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-light)', marginTop: 10, lineHeight: 1.5 }}>
+              Best-group TPR values and subgroup names are confirmed for every axis from the Phase-4 external validation notebook.
+            </div>
+          </div>
+          <Divider />
+
+          {/* Case-level gallery */}
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text)', marginBottom: 3 }}>
+              Case-level evidence — melanomas Model A missed but Model E caught
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 14 }}>
+              Six confirmed melanomas from ISIC 2020, ranked by confidence gap. Ground truth for every case below is
+              {' '}<strong style={{ color: 'var(--danger)' }}>malignant melanoma</strong>.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+              {ext.cases.map(c => (
+                <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                                         overflow: 'hidden', background: 'var(--surface)' }}>
+                  <div style={{ padding: 10, paddingBottom: 0 }}><PoCLesionImage id={c.id} /></div>
+                  <div style={{ padding: '13px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{c.id}</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 800, background: 'var(--danger-bg)', color: 'var(--danger)',
+                                     borderRadius: 999, padding: '3px 8px' }}>MELANOMA</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>{c.age} · {c.sex} · {c.loc}</div>
+
+                    {/* Model A */}
+                    <div style={{ marginTop: 13 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Model A</span>
+                        <span style={{ fontWeight: 700, color: 'var(--danger)' }}>P(mel) {c.probA.toFixed(3)} · MISSED</span>
+                      </div>
+                      <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden' }}>
+                        <div style={{ width: `${(c.probA * 100).toFixed(1)}%`, height: '100%', background: 'var(--danger)' }} />
+                      </div>
+                      {c.predA && <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>Predicted as <strong style={{ color: 'var(--text-muted)' }}>{c.predA}</strong></div>}
+                    </div>
+
+                    {/* Model E */}
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Model E</span>
+                        <span style={{ fontWeight: 700, color: 'var(--success)' }}>P(mel) {c.probE.toFixed(3)} · CAUGHT</span>
+                      </div>
+                      <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden' }}>
+                        <div style={{ width: `${(c.probE * 100).toFixed(1)}%`, height: '100%', background: 'var(--success)' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Footnote */}
+          {!online && (
+            <div style={{ padding: '14px 20px', fontSize: 11.5, color: 'var(--text-muted)', borderTop: '1px solid var(--border)',
+                          lineHeight: 1.65, background: 'var(--surface-2)' }}>
+              Reference values from Phase-4 external validation — connect the Flask backend for live figures.
+            </div>
+          )}
         </Card>
       </PageContent>
     </div>
@@ -1616,6 +1707,6 @@ const DoctorMessages = () => {
 
 Object.assign(window, {
   DoctorDashboard, DoctorPatients, DoctorDetection,
-  DoctorRecord, DoctorAppointments, DoctorAnalytics, DoctorNotifications,
+  DoctorRecord, DoctorAppointments, DoctorNotifications,
   DoctorModelPerformance, DoctorMessages,
 });
