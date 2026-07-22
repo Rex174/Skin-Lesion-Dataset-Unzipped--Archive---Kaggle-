@@ -275,6 +275,13 @@ def _worst_group_and_verdict(results, model_key, axis="age_group"):
     return worst_tpr, verdict
 
 
+def _best_group_tpr(results, model_key, axis="age_group"):
+    """Best-group (ceiling) melanoma TPR on the same axis as the worst-group floor."""
+    d = results.get(model_key, {}).get("fairness", {}).get(axis, {}).get("TPR_per_group", {})
+    vals = [v for v in d.values() if v is not None and not (isinstance(v, float) and v != v)]
+    return max(vals) if vals else None
+
+
 def _build_model_comparison():
     """Build the five-model list the frontend Model-Performance page expects,
     from the real JSON. Falls back to _MODEL_REGISTRY_FALLBACK if JSON absent."""
@@ -313,6 +320,8 @@ def _build_model_comparison():
         }
         worst_tpr, verdict = _worst_group_and_verdict(res, jkey)
         entry["worstGroupTPR"] = round(worst_tpr, 4) if worst_tpr is not None else None
+        best_tpr = _best_group_tpr(res, jkey)
+        entry["bestGroupTPR"] = round(best_tpr, 4) if best_tpr is not None else None
         entry["verdict"]       = verdict
         entry["melMissed"]     = round((1 - entry["melSensitivity"]) * 100) if entry["melSensitivity"] is not None else None
         out.append(entry)
@@ -393,31 +402,31 @@ _MODEL_REGISTRY_FALLBACK = [
      "mitigation": "None (original imbalanced HAM10000)", "accuracy": 0.8609, "auc": 0.9818,
      "melSensitivity": 0.3916, "eodAge": 0.2237, "eodSex": 0.1541, "eodLoc": 0.6800,
      "meanEOD": 0.353, "worstEOD": 0.680, "biasReduction": 0, "isBest": False,
-     "worstGroupTPR": 0.3148, "verdict": "baseline", "melMissed": 61,
+     "worstGroupTPR": 0.3148, "bestGroupTPR": 0.5385, "verdict": "baseline", "melMissed": 61,
      "note": "No bias mitigation. Highest raw accuracy, but misses 61 of every 100 melanomas."},
     {"key": "sampling_only", "name": "Model B — Sampling Only", "arch": "EfficientNet-B0",
      "mitigation": "Intersectional stratified sampling", "accuracy": 0.7890, "auc": 0.9492,
      "melSensitivity": 0.2651, "eodAge": 0.0419, "eodSex": 0.0499, "eodLoc": 0.3438,
      "meanEOD": 0.145, "worstEOD": 0.344, "biasReduction": 59, "isBest": False,
-     "worstGroupTPR": 0.2308, "verdict": "levelling_down", "melMissed": 73,
+     "worstGroupTPR": 0.2308, "bestGroupTPR": 0.2727, "verdict": "levelling_down", "melMissed": 73,
      "note": "Low EOD achieved by degrading melanoma detection below baseline for every group."},
     {"key": "reweight_only", "name": "Model C — Reweighting Only", "arch": "EfficientNet-B0",
      "mitigation": "Adaptive distribution-aware reweighting", "accuracy": 0.6533, "auc": 0.8899,
      "melSensitivity": 0.2771, "eodAge": 0.0670, "eodSex": 0.0830, "eodLoc": 0.3200,
      "meanEOD": 0.157, "worstEOD": 0.320, "biasReduction": 56, "isBest": False,
-     "worstGroupTPR": 0.2407, "verdict": "levelling_down", "melMissed": 72,
+     "worstGroupTPR": 0.2407, "bestGroupTPR": 0.3077, "verdict": "levelling_down", "melMissed": 72,
      "note": "Low EOD achieved by degrading melanoma detection below baseline for every group."},
     {"key": "cgan_only", "name": "Model D — cGAN Only", "arch": "EfficientNet-B0",
      "mitigation": "Conditional GAN image augmentation", "accuracy": 0.8053, "auc": 0.9536,
      "melSensitivity": 0.2831, "eodAge": 0.0621, "eodSex": 0.0285, "eodLoc": 0.3750,
      "meanEOD": 0.155, "worstEOD": 0.375, "biasReduction": 56, "isBest": False,
-     "worstGroupTPR": 0.2308, "verdict": "levelling_down", "melMissed": 72,
+     "worstGroupTPR": 0.2308, "bestGroupTPR": 0.2929, "verdict": "levelling_down", "melMissed": 72,
      "note": "Low EOD achieved by degrading melanoma detection below baseline for every group."},
     {"key": "enhanced_v2", "name": "Model E — MelBoost 3.0", "arch": "EfficientNet-B0",
      "mitigation": "Sampling + Reweighting + cGAN + melanoma-sensitivity boosting", "accuracy": 0.7327, "auc": 0.9324,
      "melSensitivity": 0.5301, "eodAge": 0.1154, "eodSex": 0.0273, "eodLoc": 0.5938,
      "meanEOD": 0.246, "worstEOD": 0.594, "biasReduction": 30, "isBest": True,
-     "worstGroupTPR": 0.5000, "verdict": "uplift", "melMissed": 47,
+     "worstGroupTPR": 0.5000, "bestGroupTPR": 0.6154, "verdict": "uplift", "melMissed": 47,
      "note": "The only model where every demographic group improves over the baseline. Detects 53% of melanomas vs 39% baseline, while cutting age and sex bias."},
 ]
 
@@ -718,13 +727,18 @@ def doctor_dashboard():
     doctor = DoctorProfile.query.filter_by(user_id=session["user_id"]).first_or_404()
     today  = datetime.utcnow().date()
     total_patients  = doctor.patients.count()
-    checks_today    = MelanomaCheck.query.filter_by(doctor_id=doctor.id)\
-                        .filter(db.func.date(MelanomaCheck.timestamp) == today).count()
-    high_risk_count = MelanomaCheck.query.filter_by(doctor_id=doctor.id, risk_level="high").count()
+    # Scope by the doctor's patients (not doctor_id) so patient self-scans —
+    # which are recorded with no doctor_id — are included too, matching the
+    # analytics scan feed.
+    pat_ids = [p.id for p in doctor.patients]
+    base_q  = MelanomaCheck.query.filter(MelanomaCheck.patient_id.in_(pat_ids)) if pat_ids \
+              else MelanomaCheck.query.filter(db.false())
+    checks_today    = base_q.filter(db.func.date(MelanomaCheck.timestamp) == today).count()
+    high_risk_count = base_q.filter_by(risk_level="high").count()
     # Distinct patients currently flagged high-risk (for the pending list)
     high_risk_patients = []
     seen = set()
-    for c in MelanomaCheck.query.filter_by(doctor_id=doctor.id, risk_level="high")\
+    for c in base_q.filter_by(risk_level="high")\
               .order_by(MelanomaCheck.timestamp.desc()).all():
         if c.patient_id in seen:
             continue
@@ -733,8 +747,7 @@ def doctor_dashboard():
         if pat:
             high_risk_patients.append({"id": pat.id, "name": pat.full_name})
     recent_checks   = []
-    for c in MelanomaCheck.query.filter_by(doctor_id=doctor.id)\
-              .order_by(MelanomaCheck.timestamp.desc()).limit(5).all():
+    for c in base_q.order_by(MelanomaCheck.timestamp.desc()).limit(5).all():
         pat = Patient.query.get(c.patient_id)
         recent_checks.append({
             "id": c.id, "patientId": c.patient_id,
@@ -1121,6 +1134,61 @@ def models_comparison():
     return _ok(_build_model_comparison())
 
 
+# External-validation Proof-of-Concept results (ISIC 2020). Served to the POC
+# panel on the Model Performance page. Reads the real Phase-4 output if present
+# (external_validation/poc_isic2020.json), else returns the baked-in real numbers.
+_POC_ISIC2020 = {
+    "dataset": "ISIC 2020 Challenge",
+    "rawTotal": 33126, "evalTotal": 3584, "evalMelanoma": 584, "evalBenign": 3000,
+    "recovered": 150,
+    "sensitivity":  {"baseline": 0.1353, "enhanced": 0.3767, "delta": 0.2414},
+    "missedPer100": {"baseline": 86, "enhanced": 62},
+    "fairness": [
+        {"axis": "Age group",       "baselineWorst": 0.0845, "baselineWorstGroup": "Young adult",     "baselineEOD": 0.0832,
+         "baselineBest": 0.1677, "baselineBestGroup": "Elderly",
+         "enhancedWorst": 0.2821, "enhancedWorstGroup": "Middle-aged",    "enhancedEOD": 0.1578,
+         "enhancedBest": 0.4399, "enhancedBestGroup": "Elderly", "worstDelta": 0.1976, "verdict": "uplift"},
+        {"axis": "Sex",             "baselineWorst": 0.1136, "baselineWorstGroup": "Female",          "baselineEOD": 0.0347,
+         "baselineBest": 0.1483, "baselineBestGroup": "Male",
+         "enhancedWorst": 0.3545, "enhancedWorstGroup": "Female",         "enhancedEOD": 0.0356,
+         "enhancedBest": 0.3901, "enhancedBestGroup": "Male", "worstDelta": 0.2409, "verdict": "uplift"},
+        {"axis": "Lesion location", "baselineWorst": 0.0721, "baselineWorstGroup": "Upper extremity", "baselineEOD": 0.0888,
+         "baselineBest": 0.1609, "baselineBestGroup": "Trunk",
+         "enhancedWorst": 0.2432, "enhancedWorstGroup": "Head",           "enhancedEOD": 0.2280,
+         "enhancedBest": 0.4713, "enhancedBestGroup": "Trunk", "worstDelta": 0.1711, "verdict": "uplift"},
+    ],
+    "cases": [
+        {"id": "ISIC_5046082", "age": "Middle-aged", "sex": "Male",   "loc": "Trunk",           "probA": 0.004, "probE": 0.935, "predA": "Melanocytic Nevi"},
+        {"id": "ISIC_3319229", "age": "Middle-aged", "sex": "Female", "loc": "Trunk",           "probA": 0.077, "probE": 0.914, "predA": "Benign Keratosis"},
+        {"id": "ISIC_7897925", "age": "Middle-aged", "sex": "Male",   "loc": "Upper extremity", "probA": 0.001, "probE": 0.838, "predA": "Melanocytic Nevi"},
+        {"id": "ISIC_7295035", "age": "Young adult", "sex": "Male",   "loc": "Trunk",           "probA": 0.013, "probE": 0.840, "predA": "Melanocytic Nevi"},
+        {"id": "ISIC_7536704", "age": "Elderly",     "sex": "Male",   "loc": "Trunk",           "probA": 0.191, "probE": 0.989, "predA": "Benign Keratosis"},
+        {"id": "ISIC_3696488", "age": "Elderly",     "sex": "Female", "loc": "Upper extremity", "probA": 0.113, "probE": 0.906, "predA": "Melanocytic Nevi"},
+    ],
+}
+
+
+@api_bp.route("/models/external-validation")
+@login_required
+def models_external_validation():
+    """Proof-of-Concept external validation on the ISIC 2020 dataset — evidence
+    the framework generalises beyond its HAM10000 training split. Reads the real
+    Phase-4 JSON if present, else returns the baked-in real numbers."""
+    results_path = current_app.config.get("RESULTS_JSON_PATH", "")
+    base_dir = os.path.dirname(os.path.dirname(results_path)) if results_path else "."
+    for rel in ("external_validation/poc_isic2020.json",
+                "results/poc_isic2020.json",
+                "poc_isic2020.json"):
+        path = os.path.join(base_dir, rel)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return _ok(json.load(f))
+            except Exception:
+                break
+    return _ok(_POC_ISIC2020)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  LIVE ANALYTICS KPIs  (polled by the Analytics dashboard for real-time updates)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1242,6 +1310,85 @@ def doctor_analytics_live():
     })
 
 
+@api_bp.route("/doctor/analytics-facts")
+@login_required
+def doctor_analytics_facts():
+    """Record-level scan FACTS for the OLAP analytics cube — one row per
+    MelanomaCheck across this doctor's patients, with patient demographics
+    joined in. Purely real recorded scans from the database."""
+    if session.get("role") != "doctor":
+        return _err("Forbidden", 403)
+    doctor = DoctorProfile.query.filter_by(user_id=session["user_id"]).first()
+    patients = {p.id: p for p in (doctor.patients if doctor else [])}
+    if not patients:
+        return _ok({"facts": []})
+
+    MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    RISK = {"high": "High", "moderate": "Moderate", "low": "Low"}
+    facts = []
+    for c in (MelanomaCheck.query.filter(MelanomaCheck.patient_id.in_(list(patients.keys())))
+              .order_by(MelanomaCheck.timestamp.desc()).all()):
+        p = patients.get(c.patient_id)
+        if not p:
+            continue
+        ts = c.timestamp
+        loc_raw = getattr(c, "localization", None) or (p.localization or "unknown")
+        location = str(loc_raw).strip().title() or "Unknown"
+        facts.append({
+            "id": c.id, "patientId": c.patient_id, "patientName": p.full_name,
+            "date": ts.strftime("%Y-%m-%d") if ts else "",
+            "ts": int(ts.timestamp() * 1000) if ts else 0,
+            "month": ts.strftime("%Y-%m") if ts else "",
+            "monthLabel": (MON[ts.month - 1] + " " + str(ts.year)[2:]) if ts else "",
+            "ageGroup": _AGE_GROUP_LABEL.get(p.age_group, "Unknown age"),
+            "sex": (p.sex or "").capitalize() or "Unknown",
+            "location": location,
+            "dx": c.predicted_label or c.predicted_class,
+            "dxCode": c.predicted_class,
+            "risk": RISK.get(c.risk_level, "Low"),
+            "confidence": c.confidence_score or 0,
+            "live": False,
+        })
+    return _ok({"facts": facts})
+
+
+@api_bp.route("/patient/analytics-facts")
+@login_required
+def patient_analytics_facts():
+    """Record-level scan FACTS for the patient's own OLAP dashboard — one row
+    per MelanomaCheck belonging to the logged-in patient. Real recorded scans."""
+    if session.get("role") != "patient":
+        return _err("Forbidden", 403)
+    patient = Patient.query.filter_by(user_id=session["user_id"]).first_or_404()
+
+    MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    RISK = {"high": "High", "moderate": "Moderate", "low": "Low"}
+    facts = []
+    for c in (MelanomaCheck.query.filter_by(patient_id=patient.id)
+              .order_by(MelanomaCheck.timestamp.desc()).all()):
+        ts = c.timestamp
+        loc_raw = getattr(c, "localization", None) or (patient.localization or "unknown")
+        location = str(loc_raw).strip().title() or "Unknown"
+        facts.append({
+            "id": c.id, "patientId": patient.id, "patientName": patient.full_name,
+            "date": ts.strftime("%Y-%m-%d") if ts else "",
+            "ts": int(ts.timestamp() * 1000) if ts else 0,
+            "month": ts.strftime("%Y-%m") if ts else "",
+            "monthLabel": (MON[ts.month - 1] + " " + str(ts.year)[2:]) if ts else "",
+            "ageGroup": _AGE_GROUP_LABEL.get(patient.age_group, "Unknown age"),
+            "sex": (patient.sex or "").capitalize() or "Unknown",
+            "location": location,
+            "dx": c.predicted_label or c.predicted_class,
+            "dxCode": c.predicted_class,
+            "risk": RISK.get(c.risk_level, "Low"),
+            "confidence": c.confidence_score or 0,
+            "live": False,
+        })
+    return _ok({"facts": facts})
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  MESSAGING  (two-way doctor ↔ patient)
 #  A conversation is keyed by patient_id. Patients only see their own thread;
@@ -1326,11 +1473,14 @@ def messages_post():
 @api_bp.route("/messages/<int:message_id>", methods=["DELETE"])
 @login_required
 def messages_delete(message_id):
-    """Delete a message. Only the sender may delete their own message."""
+    """Soft-delete a message (permanent tombstone). Only the sender may delete
+    their own message; the row is kept so it renders 'This message has been
+    deleted' and stops counting as unread."""
     msg = Message.query.get_or_404(message_id)
     if msg.sender_role != session.get("role") or msg.sender_id != session.get("user_id"):
         return _err("You can only delete your own messages", 403)
-    db.session.delete(msg)
+    msg.is_deleted = True
+    msg.is_read    = True   # a deleted message must never linger as "unread"
     db.session.commit()
     return _ok({"deleted": message_id})
 
@@ -1348,7 +1498,7 @@ def messages_threads():
         msgs = Message.query.filter_by(patient_id=p.id)\
                             .order_by(Message.timestamp.asc()).all()
         last = msgs[-1].to_dict() if msgs else None
-        unread = sum(1 for m in msgs if m.sender_role == "patient" and not m.is_read)
+        unread = sum(1 for m in msgs if m.sender_role == "patient" and not m.is_read and not m.is_deleted)
         threads.append({
             "patientId": p.id,
             "name":      p.full_name,
