@@ -1,0 +1,10 @@
+{
+"phase12_base":"/kaggle/working/phase1_outputs",
+"splits_dir": "/kaggle/working/phase1_outputs/splits",
+"synthetic_images_dir":"/kaggle/working/phase1_outputs/synthetic_images",
+"label_map":"/kaggle/working/phase1_outputs/label_map.json",
+"sample_weights":"/kaggle/working/phase1_outputs/sample_weights.json",
+"rare_subgroups":"/kaggle/working/phase1_outputs/rare_subgroups_cgan_targets.csv",
+"cgan_log":"/kaggle/working/phase1_outputs/cgan_generation_log.csv",
+"n_synthetic_images":930
+}
