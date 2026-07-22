@@ -1,74 +1,74 @@
 {
   "Model_A_Standard_Baseline": {
     "standard_metrics": {
-      "accuracy": 0.8596,
-      "auc_macro": 0.9836,
-      "sensitivity": 0.7648,
-      "specificity": 0.9565,
+      "accuracy": 0.8609,
+      "auc_macro": 0.9818,
+      "sensitivity": 0.7665,
+      "specificity": 0.9557,
       "per_class_sensitivity": {
-        "akiec": 0.9375,
-        "bcc": 0.8667,
-        "bkl": 0.5062,
+        "akiec": 0.8958,
+        "bcc": 0.9067,
+        "bkl": 0.5875,
         "df": 0.6667,
-        "mel": 0.4578,
-        "nv": 0.9809,
+        "mel": 0.3916,
+        "nv": 0.9799,
         "vasc": 0.9375
       },
       "per_class_specificity": {
-        "akiec": 0.9727,
-        "bcc": 0.9793,
-        "bkl": 0.9909,
-        "df": 0.9993,
+        "akiec": 0.9755,
+        "bcc": 0.9821,
+        "bkl": 0.9916,
+        "df": 0.9979,
         "mel": 0.9916,
-        "nv": 0.7625,
+        "nv": 0.7521,
         "vasc": 0.9993
       }
     },
-    "ece": 0.0192,
+    "ece": 0.0174,
     "fairness": {
       "age_group": {
-        "EOD": 0.3404,
-        "DP": 0.1045,
+        "EOD": 0.2237,
+        "DP": 0.0585,
         "TPR_per_group": {
-          "MiddleAged": 0.3519,
+          "MiddleAged": 0.3148,
           "Pediatric": NaN,
-          "Elderly": 0.4848,
-          "YoungAdult": 0.6923
+          "Elderly": 0.4141,
+          "YoungAdult": 0.5385
         },
         "PPR_per_group": {
-          "MiddleAged": 0.033,
-          "Pediatric": 0.0,
-          "Elderly": 0.1045,
-          "YoungAdult": 0.0375
+          "MiddleAged": 0.0315,
+          "Pediatric": 0.0312,
+          "Elderly": 0.0877,
+          "YoungAdult": 0.0292
         }
       },
       "sex": {
-        "EOD": 0.084,
-        "DP": 0.0319,
+        "EOD": 0.1541,
+        "DP": 0.0291,
         "TPR_per_group": {
-          "female": 0.4062,
-          "male": 0.4902
+          "female": 0.2969,
+          "male": 0.451
         },
         "PPR_per_group": {
-          "female": 0.0417,
-          "male": 0.0736
+          "female": 0.0357,
+          "male": 0.0648
         }
       },
       "loc_zone": {
         "EOD": 0.68,
-        "DP": 0.0773,
+        "DP": 0.0438,
         "TPR_per_group": {
-          "Trunk": 0.4533,
-          "UpperExtremity": 0.5938,
-          "LowerExtremity": 0.4242,
+          "Trunk": 0.4,
+          "UpperExtremity": 0.4062,
+          "LowerExtremity": 0.3939,
           "Head": 0.32,
           "Unknown": 1.0
         },
         "PPR_per_group": {
-          "Trunk": 0.0528,
-          "UpperExtremity": 0.1173,
+          "Trunk": 0.0489,
+          "UpperExtremity": 0.0838,
           "LowerExtremity": 0.042,
-          "Head": 0.0641,
+          "Head": 0.0513,
           "Unknown": 0.04
         }
       }
@@ -76,73 +76,73 @@
   },
   "Model_B_Sampling_Only": {
     "standard_metrics": {
-      "accuracy": 0.7917,
-      "auc_macro": 0.9475,
-      "sensitivity": 0.5865,
-      "specificity": 0.9376,
+      "accuracy": 0.789,
+      "auc_macro": 0.9492,
+      "sensitivity": 0.579,
+      "specificity": 0.9366,
       "per_class_sensitivity": {
-        "akiec": 0.625,
+        "akiec": 0.6458,
         "bcc": 0.72,
-        "bkl": 0.4,
-        "df": 0.2,
-        "mel": 0.259,
-        "nv": 0.9638,
-        "vasc": 0.9375
+        "bkl": 0.3812,
+        "df": 0.2667,
+        "mel": 0.2651,
+        "nv": 0.9618,
+        "vasc": 0.8125
       },
       "per_class_specificity": {
-        "akiec": 0.9621,
-        "bcc": 0.9707,
+        "akiec": 0.9593,
+        "bcc": 0.9664,
         "bkl": 0.9772,
-        "df": 0.9966,
-        "mel": 0.987,
-        "nv": 0.6708,
+        "df": 0.9979,
+        "mel": 0.9924,
+        "nv": 0.6646,
         "vasc": 0.9986
       }
     },
-    "ece": 0.0585,
+    "ece": 0.0631,
     "fairness": {
       "age_group": {
-        "EOD": 0.0318,
-        "DP": 0.069,
+        "EOD": 0.0419,
+        "DP": 0.0653,
         "TPR_per_group": {
           "MiddleAged": 0.2593,
           "Pediatric": NaN,
-          "Elderly": 0.2626,
+          "Elderly": 0.2727,
           "YoungAdult": 0.2308
         },
         "PPR_per_group": {
-          "MiddleAged": 0.03,
+          "MiddleAged": 0.024,
           "Pediatric": 0.0,
-          "Elderly": 0.069,
+          "Elderly": 0.0653,
           "YoungAdult": 0.0125
         }
       },
       "sex": {
-        "EOD": 0.0361,
-        "DP": 0.0037,
+        "EOD": 0.0499,
+        "DP": 0.0208,
         "TPR_per_group": {
-          "female": 0.2812,
-          "male": 0.2451
+          "female": 0.2344,
+          "male": 0.2843
         },
         "PPR_per_group": {
-          "female": 0.0387,
-          "male": 0.0424
+          "female": 0.0253,
+          "male": 0.0461
         }
       },
       "loc_zone": {
         "EOD": 0.3438,
-        "DP": 0.0782,
+        "DP": 0.0838,
         "TPR_per_group": {
-          "Trunk": 0.3067,
+          "Trunk": 0.2667,
           "UpperExtremity": 0.3438,
-          "LowerExtremity": 0.2121,
-          "Head": 0.08,
+          "LowerExtremity": 0.303,
+          "Head": 0.12,
           "Unknown": 0.0
         },
         "PPR_per_group": {
-          "Trunk": 0.0423,
-          "UpperExtremity": 0.0782,
-          "LowerExtremity": 0.0308,
+          "Trunk": 0.0304,
+          "UpperExtremity": 0.0838,
+          "LowerExtremity": 0.0364,
           "Head": 0.0192,
           "Unknown": 0.0
         }
@@ -151,74 +151,74 @@
   },
   "Model_C_Reweighting_Only": {
     "standard_metrics": {
-      "accuracy": 0.6411,
-      "auc_macro": 0.8803,
-      "sensitivity": 0.5736,
-      "specificity": 0.9313,
+      "accuracy": 0.6533,
+      "auc_macro": 0.8899,
+      "sensitivity": 0.5688,
+      "specificity": 0.928,
       "per_class_sensitivity": {
-        "akiec": 0.375,
-        "bcc": 0.6533,
-        "bkl": 0.3312,
+        "akiec": 0.4583,
+        "bcc": 0.52,
+        "bkl": 0.4187,
         "df": 0.6,
-        "mel": 0.3012,
-        "nv": 0.7545,
-        "vasc": 1.0
+        "mel": 0.2771,
+        "nv": 0.7696,
+        "vasc": 0.9375
       },
       "per_class_specificity": {
-        "akiec": 0.9502,
-        "bcc": 0.9056,
-        "bkl": 0.9498,
-        "df": 0.9561,
-        "mel": 0.9534,
-        "nv": 0.8458,
-        "vasc": 0.9582
+        "akiec": 0.9467,
+        "bcc": 0.96,
+        "bkl": 0.9482,
+        "df": 0.9507,
+        "mel": 0.945,
+        "nv": 0.7917,
+        "vasc": 0.954
       }
     },
-    "ece": 0.0937,
+    "ece": 0.0977,
     "fairness": {
       "age_group": {
-        "EOD": 0.0505,
-        "DP": 0.0322,
+        "EOD": 0.067,
+        "DP": 0.0605,
         "TPR_per_group": {
-          "MiddleAged": 0.3333,
+          "MiddleAged": 0.2407,
           "Pediatric": NaN,
-          "Elderly": 0.2828,
+          "Elderly": 0.2929,
           "YoungAdult": 0.3077
         },
         "PPR_per_group": {
-          "MiddleAged": 0.0616,
-          "Pediatric": 0.0938,
-          "Elderly": 0.0858,
-          "YoungAdult": 0.0875
+          "MiddleAged": 0.0706,
+          "Pediatric": 0.0312,
+          "Elderly": 0.0896,
+          "YoungAdult": 0.0917
         }
       },
       "sex": {
-        "EOD": 0.1201,
-        "DP": 0.0175,
+        "EOD": 0.083,
+        "DP": 0.0115,
         "TPR_per_group": {
-          "female": 0.375,
-          "male": 0.2549
+          "female": 0.3281,
+          "male": 0.2451
         },
         "PPR_per_group": {
-          "female": 0.0848,
-          "male": 0.0673
+          "female": 0.0863,
+          "male": 0.0748
         }
       },
       "loc_zone": {
-        "EOD": 0.3939,
-        "DP": 0.0758,
+        "EOD": 0.32,
+        "DP": 0.0525,
         "TPR_per_group": {
           "Trunk": 0.32,
-          "UpperExtremity": 0.3438,
-          "LowerExtremity": 0.3939,
-          "Head": 0.08,
+          "UpperExtremity": 0.3125,
+          "LowerExtremity": 0.2424,
+          "Head": 0.16,
           "Unknown": 0.0
         },
         "PPR_per_group": {
-          "Trunk": 0.0793,
-          "UpperExtremity": 0.095,
-          "LowerExtremity": 0.084,
-          "Head": 0.0192,
+          "Trunk": 0.0925,
+          "UpperExtremity": 0.0894,
+          "LowerExtremity": 0.0644,
+          "Head": 0.0513,
           "Unknown": 0.04
         }
       }
@@ -226,74 +226,74 @@
   },
   "Model_D_cGAN_Only": {
     "standard_metrics": {
-      "accuracy": 0.8046,
-      "auc_macro": 0.9535,
-      "sensitivity": 0.6371,
-      "specificity": 0.9386,
+      "accuracy": 0.8053,
+      "auc_macro": 0.9536,
+      "sensitivity": 0.6228,
+      "specificity": 0.9383,
       "per_class_sensitivity": {
-        "akiec": 0.6667,
-        "bcc": 0.7733,
-        "bkl": 0.3562,
-        "df": 0.4667,
+        "akiec": 0.5833,
+        "bcc": 0.8267,
+        "bkl": 0.35,
+        "df": 0.4,
         "mel": 0.2831,
-        "nv": 0.9759,
+        "nv": 0.9789,
         "vasc": 0.9375
       },
       "per_class_specificity": {
-        "akiec": 0.9649,
-        "bcc": 0.9714,
+        "akiec": 0.967,
+        "bcc": 0.9707,
         "bkl": 0.9886,
-        "df": 0.9979,
+        "df": 0.9986,
         "mel": 0.9893,
-        "nv": 0.6604,
+        "nv": 0.6562,
         "vasc": 0.9979
       }
     },
-    "ece": 0.0634,
+    "ece": 0.0608,
     "fairness": {
       "age_group": {
-        "EOD": 0.0484,
+        "EOD": 0.0621,
         "DP": 0.0728,
         "TPR_per_group": {
-          "MiddleAged": 0.2593,
+          "MiddleAged": 0.2778,
           "Pediatric": NaN,
           "Elderly": 0.2929,
-          "YoungAdult": 0.3077
+          "YoungAdult": 0.2308
         },
         "PPR_per_group": {
-          "MiddleAged": 0.027,
+          "MiddleAged": 0.0285,
           "Pediatric": 0.0,
           "Elderly": 0.0728,
-          "YoungAdult": 0.0167
+          "YoungAdult": 0.0125
         }
       },
       "sex": {
         "EOD": 0.0285,
-        "DP": 0.0132,
+        "DP": 0.0159,
         "TPR_per_group": {
           "female": 0.2656,
           "male": 0.2941
         },
         "PPR_per_group": {
-          "female": 0.0342,
-          "male": 0.0474
+          "female": 0.0327,
+          "male": 0.0486
         }
       },
       "loc_zone": {
-        "EOD": 0.4062,
+        "EOD": 0.375,
         "DP": 0.0894,
         "TPR_per_group": {
-          "Trunk": 0.2933,
-          "UpperExtremity": 0.4062,
-          "LowerExtremity": 0.2424,
+          "Trunk": 0.3333,
+          "UpperExtremity": 0.375,
+          "LowerExtremity": 0.1818,
           "Head": 0.16,
           "Unknown": 0.0
         },
         "PPR_per_group": {
-          "Trunk": 0.037,
+          "Trunk": 0.041,
           "UpperExtremity": 0.0894,
-          "LowerExtremity": 0.0308,
-          "Head": 0.0385,
+          "LowerExtremity": 0.0252,
+          "Head": 0.0321,
           "Unknown": 0.0
         }
       }
@@ -301,75 +301,150 @@
   },
   "Model_E_Full_Framework": {
     "standard_metrics": {
-      "accuracy": 0.7327,
-      "auc_macro": 0.9276,
-      "sensitivity": 0.6081,
-      "specificity": 0.9396,
+      "accuracy": 0.749,
+      "auc_macro": 0.9346,
+      "sensitivity": 0.6301,
+      "specificity": 0.9407,
       "per_class_sensitivity": {
-        "akiec": 0.75,
-        "bcc": 0.56,
+        "akiec": 0.7292,
+        "bcc": 0.64,
         "bkl": 0.3812,
-        "df": 0.4,
-        "mel": 0.2892,
-        "nv": 0.8763,
+        "df": 0.4667,
+        "mel": 0.3012,
+        "nv": 0.8924,
         "vasc": 1.0
       },
       "per_class_specificity": {
-        "akiec": 0.9151,
-        "bcc": 0.9635,
-        "bkl": 0.9635,
-        "df": 0.9842,
-        "mel": 0.9694,
-        "nv": 0.7875,
-        "vasc": 0.9938
+        "akiec": 0.9292,
+        "bcc": 0.9628,
+        "bkl": 0.9665,
+        "df": 0.987,
+        "mel": 0.9709,
+        "nv": 0.7729,
+        "vasc": 0.9952
       }
     },
-    "ece": 0.0543,
+    "ece": 0.0608,
     "fairness": {
       "age_group": {
-        "EOD": 0.0299,
-        "DP": 0.0658,
+        "EOD": 0.0114,
+        "DP": 0.0989,
         "TPR_per_group": {
-          "MiddleAged": 0.2778,
+          "MiddleAged": 0.2963,
           "Pediatric": NaN,
-          "Elderly": 0.2929,
+          "Elderly": 0.303,
           "YoungAdult": 0.3077
         },
         "PPR_per_group": {
           "MiddleAged": 0.0405,
-          "Pediatric": 0.0312,
-          "Elderly": 0.097,
+          "Pediatric": 0.0,
+          "Elderly": 0.0989,
           "YoungAdult": 0.0333
         }
       },
       "sex": {
-        "EOD": 0.0129,
-        "DP": 0.0058,
+        "EOD": 0.007,
+        "DP": 0.0167,
         "TPR_per_group": {
-          "female": 0.2812,
-          "male": 0.2941
+          "female": 0.2969,
+          "male": 0.3039
         },
         "PPR_per_group": {
-          "female": 0.0565,
-          "male": 0.0623
+          "female": 0.0506,
+          "male": 0.0673
         }
       },
       "loc_zone": {
-        "EOD": 0.3467,
-        "DP": 0.0894,
+        "EOD": 0.4062,
+        "DP": 0.1006,
         "TPR_per_group": {
-          "Trunk": 0.3467,
-          "UpperExtremity": 0.3438,
-          "LowerExtremity": 0.1818,
+          "Trunk": 0.32,
+          "UpperExtremity": 0.4062,
+          "LowerExtremity": 0.2424,
           "Head": 0.2,
           "Unknown": 0.0
         },
         "PPR_per_group": {
-          "Trunk": 0.0661,
-          "UpperExtremity": 0.0894,
-          "LowerExtremity": 0.0308,
-          "Head": 0.0705,
+          "Trunk": 0.0647,
+          "UpperExtremity": 0.1006,
+          "LowerExtremity": 0.0336,
+          "Head": 0.0577,
           "Unknown": 0.0
+        }
+      }
+    }
+  },
+  "Model_E_melboost_3_0": {
+    "standard_metrics": {
+      "accuracy": 0.7327,
+      "auc_macro": 0.9324,
+      "sensitivity": 0.6369,
+      "specificity": 0.9445,
+      "per_class_sensitivity": {
+        "akiec": 0.7708,
+        "bcc": 0.64,
+        "bkl": 0.3437,
+        "df": 0.4,
+        "mel": 0.5301,
+        "nv": 0.836,
+        "vasc": 0.9375
+      },
+      "per_class_specificity": {
+        "akiec": 0.9313,
+        "bcc": 0.9671,
+        "bkl": 0.9711,
+        "df": 0.989,
+        "mel": 0.9106,
+        "nv": 0.8458,
+        "vasc": 0.9966
+      }
+    },
+    "ece": 0.0603,
+    "fairness": {
+      "age_group": {
+        "EOD": 0.1154,
+        "DP": 0.1834,
+        "TPR_per_group": {
+          "MiddleAged": 0.5,
+          "Pediatric": NaN,
+          "Elderly": 0.5354,
+          "YoungAdult": 0.6154
+        },
+        "PPR_per_group": {
+          "MiddleAged": 0.0931,
+          "Pediatric": 0.0312,
+          "Elderly": 0.2146,
+          "YoungAdult": 0.1125
+        }
+      },
+      "sex": {
+        "EOD": 0.0273,
+        "DP": 0.0314,
+        "TPR_per_group": {
+          "female": 0.5469,
+          "male": 0.5196
+        },
+        "PPR_per_group": {
+          "female": 0.122,
+          "male": 0.1534
+        }
+      },
+      "loc_zone": {
+        "EOD": 0.5938,
+        "DP": 0.0876,
+        "TPR_per_group": {
+          "Trunk": 0.52,
+          "UpperExtremity": 0.5938,
+          "LowerExtremity": 0.5455,
+          "Head": 0.48,
+          "Unknown": 0.0
+        },
+        "PPR_per_group": {
+          "Trunk": 0.144,
+          "UpperExtremity": 0.1676,
+          "LowerExtremity": 0.1092,
+          "Head": 0.1603,
+          "Unknown": 0.08
         }
       }
     }
