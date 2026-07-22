@@ -14,7 +14,7 @@ TABLES:
 ===================================================================================
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -254,6 +254,7 @@ class Message(db.Model):
     sender_id   = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     body        = db.Column(db.Text, nullable=False)
     is_read     = db.Column(db.Boolean, default=False)        # read by the OTHER party
+    is_deleted  = db.Column(db.Boolean, default=False)        # soft-delete tombstone
     timestamp   = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     def to_dict(self):
@@ -261,9 +262,10 @@ class Message(db.Model):
             "id":   self.id,
             "conversationId": self.patient_id,
             "from": self.sender_role,
-            "text": self.body,
-            "ts":   int(self.timestamp.timestamp() * 1000) if self.timestamp else None,
+            "text": "This message has been deleted" if self.is_deleted else self.body,
+            "ts":   int(self.timestamp.replace(tzinfo=timezone.utc).timestamp() * 1000) if self.timestamp else None,
             "isRead": self.is_read,
+            "deleted": bool(self.is_deleted),
         }
 
     def __repr__(self):
